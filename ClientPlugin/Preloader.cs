@@ -3,9 +3,12 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
+using ClientPlugin.Compatibility;
+using ClientPlugin.Compatibility.Rendering;
 using HarmonyLib;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -821,15 +824,13 @@ public static class Preloader
         // Fixes runtime loading the Keen version in some cases by initializing it explicitly
         Assembly.Load("System.Collections.Immutable");
 
-        // Initialize DXVK native resolver for DirectX 11 rendering on Linux
-        ClientPlugin.DxvkResolver.Initialize();
-
-        // Initialize D3DCompiler native wrapper for shader compilation on Linux
-        ClientPlugin.D3DCompilerResolver.Initialize();
-
-        // Initialize native PE loader wrappers (Havok, RecastDetour, VRageNative)
-        // and register DllImport resolvers on game assemblies
-        ClientPlugin.NativeWrapperResolver.Initialize();
+        // Native library preloading and the Windows-DLL-name -> Linux-.so
+        // alias table (DXVK, EOS, Steamworks, SDL3, the PE-loader wrapper
+        // libs) live in Pulsar's NativeLibraryPreloader, which runs at the
+        // top of Pulsar.Legacy.Program.Main before any plugin loads. All
+        // that remains here is handing the wrapper libraries the absolute
+        // paths to the Windows DLLs they need to PE-load.
+        InitNativeWrappers();
 
         // Bring up the dedicated SDL render thread before any SDL3 use. It must
         // exist by the time MyCommonProgramStartup.InitSplashScreen fires our
@@ -868,5 +869,39 @@ public static class Preloader
         }
         Console.WriteLine($"[LinuxCompat] PatchCategory(\"Finish\") applied {harmony.GetPatchedMethods().Count()} methods");
         try { VRage.Utils.MyLog.Default.WriteLineAndConsole($"[LinuxCompat] PatchCategory(\"Finish\") applied {harmony.GetPatchedMethods().Count()} methods"); } catch { }
+    }
+
+    // Hand the wrapper libraries the absolute paths to the Windows DLLs they
+    // PE-load (the SE-shipped d3dcompiler_47.dll, Havok.dll, RecastDetour.dll,
+    // VRage.Native.dll). The wrapper .so files themselves are already in the
+    // process via Pulsar's NativeLibraryPreloader, so the [DllImport] calls
+    // these Init() methods make resolve against the preloaded handles.
+    private static void InitNativeWrappers()
+    {
+        var gameRoot = Environment.GetEnvironmentVariable("SPACE_ENGINEERS_ROOT");
+        if (string.IsNullOrEmpty(gameRoot))
+        {
+            Console.WriteLine("[LinuxCompat] WARNING: SPACE_ENGINEERS_ROOT not set, cannot initialize native wrappers");
+            return;
+        }
+
+        var bin64 = Path.Combine(gameRoot, "Bin64");
+        InitWrapper("D3DCompiler",  bin64, "d3dcompiler_47.dll", D3DCompilerLinux.Init);
+        InitWrapper("Havok",        bin64, "Havok.dll",          HavokLinux.Init);
+        InitWrapper("RecastDetour", bin64, "RecastDetour.dll",   RecastDetourLinux.Init);
+        InitWrapper("VRageNative",  bin64, "VRage.Native.dll",   VRageNativeLinux.Init);
+    }
+
+    private static void InitWrapper(string name, string binDir, string dllName, Action<string> initFunc)
+    {
+        var dllPath = Path.Combine(binDir, dllName);
+        if (!File.Exists(dllPath))
+        {
+            Console.WriteLine($"[LinuxCompat] WARNING: {dllName} not found at {dllPath}");
+            return;
+        }
+
+        initFunc(dllPath);
+        Console.WriteLine($"[LinuxCompat] {name} initialized: {dllPath}");
     }
 }
