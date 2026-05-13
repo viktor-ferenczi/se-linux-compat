@@ -62,6 +62,36 @@ static class PathHelpers
     }
 
     /// <summary>
+    /// Cross-platform replacement for <see cref="Path.GetFileName(string)"/>.
+    /// The BCL only recognizes `\` as a directory separator on Windows, so
+    /// on Linux <c>Path.GetFileName("Textures\\foo.dds")</c> returns the
+    /// whole string instead of the leaf. Transpiler patches in this
+    /// namespace swap the static call to this helper for callers that
+    /// consume literal Windows-style paths from game data (.tai atlas
+    /// manifests, TransparentMaterials.sbc) without normalizing first.
+    /// Signature matches <see cref="Path.GetFileName(string)"/> so the
+    /// transpiler only needs to rewrite the call operand.
+    /// </summary>
+    public static string GetFileName(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return path;
+        return Path.GetFileName(path.Replace('\\', '/'));
+    }
+
+    /// <summary>
+    /// Cross-platform replacement for
+    /// <see cref="Path.GetFileNameWithoutExtension(string)"/>. Same Linux
+    /// separator issue as <see cref="GetFileName"/>.
+    /// </summary>
+    public static string GetFileNameWithoutExtension(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return path;
+        return Path.GetFileNameWithoutExtension(path.Replace('\\', '/'));
+    }
+
+    /// <summary>
     /// Resolves a content-relative file path by normalizing separators and
     /// performing case-insensitive directory/file matching.
     /// </summary>

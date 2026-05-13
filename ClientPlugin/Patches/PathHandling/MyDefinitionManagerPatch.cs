@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
+using ClientPlugin.Tools;
 using HarmonyLib;
 using Sandbox.Definitions;
 using VRage.FileSystem;
@@ -95,6 +99,50 @@ static class MyDefinitionManagerLoadDefinitionsPatch
 
         MyDefinitionManager.m_directoryExistCache.Clear();
         return false;
+    }
+}
+
+// MyDefinitionManager.CreateTransparentMaterials decides which transparent
+// materials are atlased particle textures via
+//   Path.GetFileNameWithoutExtension(def.Texture).StartsWith("Atlas_")
+// `def.Texture` comes verbatim from TransparentMaterials.sbc, e.g.
+// "Textures\Models\Atlas_Foo.dds". The field is mod-API surface
+// (MyTransparentMaterialDefinition is public, Texture is a public field
+// that mods Split('\\') against), so we cannot normalize it at definition
+// load. On Linux Path.GetFileNameWithoutExtension does not recognize `\`,
+// so the test sees "Textures\Models\Atlas_Foo" instead of "Atlas_Foo" and
+// StartsWith("Atlas_") returns false — affected atlas textures are never
+// added to MyRenderProxy.AddToParticleTextureArray.
+//
+// Fix: transpile the lone Path.GetFileNameWithoutExtension(string) call to
+// PathHelpers.GetFileNameWithoutExtension, which normalizes `\` to `/`
+// before delegating. The field stays unchanged for mods.
+[HarmonyPatch(typeof(MyDefinitionManager))]
+[HarmonyPatchCategory("Finish")]
+// ReSharper disable once UnusedType.Global
+static class MyDefinitionManagerCreateTransparentMaterialsPatch
+{
+    // ReSharper disable once UnusedMember.Local
+    [HarmonyTranspiler]
+    [HarmonyPatch("CreateTransparentMaterials")]
+    static IEnumerable<CodeInstruction> CreateTransparentMaterialsTranspiler(IEnumerable<CodeInstruction> instructions, MethodBase patchedMethod)
+    {
+        var il = instructions.ToList();
+        il.RecordOriginalCode(patchedMethod);
+
+        var target = typeof(Path).GetMethod(nameof(Path.GetFileNameWithoutExtension), new[] { typeof(string) });
+        var replacement = typeof(PathHelpers).GetMethod(nameof(PathHelpers.GetFileNameWithoutExtension), new[] { typeof(string) });
+
+        // Mutate the operand in place so any branch labels or exception
+        // blocks attached to the call instruction stay anchored to it.
+        foreach (var instr in il)
+        {
+            if (instr.opcode == OpCodes.Call && instr.operand is MethodInfo mi && mi == target)
+                instr.operand = replacement;
+        }
+
+        il.RecordPatchedCode(patchedMethod);
+        return il;
     }
 }
 
