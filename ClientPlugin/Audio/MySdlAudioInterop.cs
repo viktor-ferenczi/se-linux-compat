@@ -62,37 +62,27 @@ internal static unsafe class MySdlAudioInterop
 	{
 		ffmpeg.RootPath = string.Empty;
 		ffmpeg.av_log_set_level(ffmpeg.AV_LOG_ERROR);
-		ProbeFfmpegVersions();
+		PinFfmpegLibraryVersions();
 		Type bindingsType = typeof(ffmpeg).Assembly.GetType("FFmpeg.AutoGen.DynamicallyLoadedBindings");
 		MethodInfo initializeMethod = bindingsType?.GetMethod("Initialize", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
 		initializeMethod?.Invoke(null, null);
 	}
 
-	private static void ProbeFfmpegVersions()
+	private static void PinFfmpegLibraryVersions()
 	{
-		var candidates = new Dictionary<string, int[]>
-		{
-			{ "avcodec",    new[] { 62, 61, 60, 59, 58 } },
-			{ "avdevice",   new[] { 62, 61, 60, 59 } },
-			{ "avfilter",   new[] { 11, 10, 9, 8 } },
-			{ "avformat",   new[] { 62, 61, 60, 59, 58 } },
-			{ "avutil",     new[] { 60, 59, 58, 57, 56 } },
-			{ "swresample", new[] { 6, 5, 4, 3 } },
-			{ "swscale",    new[] { 9, 8, 7, 6 } },
-		};
-
-		foreach (var (lib, versions) in candidates)
-		{
-			foreach (int ver in versions)
-			{
-				if (NativeLibrary.TryLoad($"lib{lib}.so.{ver}", out var handle))
-				{
-					NativeLibrary.Free(handle);
-					ffmpeg.LibraryVersionMap[lib] = ver;
-					break;
-				}
-			}
-		}
+		// Pin to FFmpeg 8.1 — the major bundled under Pulsar/Libraries and
+		// the major that FFmpeg.AutoGen 8.1.0's AVCodecContext layout
+		// assumes. Falling back to older majors re-introduces struct-layout
+		// drift (FFmpeg 8 removed AVCodecContext.ticks_per_frame, so 7.x
+		// libs would shift every field after `framerate` by 4 bytes).
+		// avdevice/avfilter are intentionally omitted — we don't call them
+		// and TryLoad'ing them would drag in a second FFmpeg via transitive
+		// deps that NativeLibrary.Free cannot undo.
+		ffmpeg.LibraryVersionMap["avcodec"]    = 62;
+		ffmpeg.LibraryVersionMap["avformat"]   = 62;
+		ffmpeg.LibraryVersionMap["avutil"]     = 60;
+		ffmpeg.LibraryVersionMap["swresample"] = 6;
+		ffmpeg.LibraryVersionMap["swscale"]    = 9;
 	}
 
 	public static byte[] LoadAudioFile(string path, out WaveFormat waveFormat)

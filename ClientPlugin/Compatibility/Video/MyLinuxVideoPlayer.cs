@@ -166,12 +166,12 @@ internal unsafe class MyLinuxVideoPlayer : IVideoPlayer, IDisposable
                 ThrowIfError(ffmpeg.av_frame_get_buffer(m_convertedFrame, 0),
                     $"allocate converted video frame for '{fileName}'");
 
-                m_scaleContext = ffmpeg.sws_getContext(
-                    m_videoWidth, m_videoHeight, m_codecContext->pix_fmt,
-                    m_videoWidth, m_videoHeight, AVPixelFormat.AV_PIX_FMT_BGRA,
-                    2, null, null, null);
-                if (m_scaleContext == null)
-                    throw new InvalidOperationException($"FFmpeg failed to create a video conversion context for '{fileName}'.");
+                // SwsContext is created lazily in ConvertFrame once the decoder
+                // reveals the actual source pixel format. For codecs like WMV3
+                // (VC-1 family) the container does not declare pix_fmt and
+                // codec_ctx->pix_fmt stays AV_PIX_FMT_NONE until the first
+                // frame is decoded — calling sws_getContext with it here would
+                // trip an assertion in libswscale.
 
                 InitTextures();
 
@@ -366,6 +366,19 @@ internal unsafe class MyLinuxVideoPlayer : IVideoPlayer, IDisposable
 
     private void ConvertFrame(AVFrame* sourceFrame)
     {
+        AVPixelFormat sourceFormat = (AVPixelFormat)sourceFrame->format;
+        bool wasNull = m_scaleContext == null;
+        m_scaleContext = ffmpeg.sws_getCachedContext(m_scaleContext,
+            m_videoWidth, m_videoHeight, sourceFormat,
+            m_videoWidth, m_videoHeight, AVPixelFormat.AV_PIX_FMT_BGRA,
+            2, null, null, null);
+        if (m_scaleContext == null)
+            throw new InvalidOperationException(
+                $"FFmpeg failed to create a video conversion context (source pix_fmt={sourceFormat}).");
+        if (wasNull)
+            MyLog.Default.WriteLineAndConsole(
+                $"[LinuxCompat] VideoPlayer scaler ready: source pix_fmt={sourceFormat} -> BGRA");
+
         ThrowIfError(ffmpeg.av_frame_make_writable(m_convertedFrame),
             "prepare converted video frame");
         ffmpeg.sws_scale(m_scaleContext, sourceFrame->data, sourceFrame->linesize,
@@ -506,7 +519,7 @@ internal unsafe class MyLinuxVideoPlayer : IVideoPlayer, IDisposable
         {
             if (s_ffmpegInitialized) return;
             ffmpeg.RootPath = string.Empty;
-            ProbeFfmpegVersions();
+            PinFfmpegLibraryVersions();
             Type bindingsType = typeof(ffmpeg).Assembly.GetType("FFmpeg.AutoGen.DynamicallyLoadedBindings");
             MethodInfo initializeMethod = bindingsType?.GetMethod("Initialize",
                 BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
@@ -516,30 +529,21 @@ internal unsafe class MyLinuxVideoPlayer : IVideoPlayer, IDisposable
         }
     }
 
-    private static void ProbeFfmpegVersions()
+    private static void PinFfmpegLibraryVersions()
     {
-        var candidates = new Dictionary<string, int[]>
-        {
-            { "avcodec",    new[] { 62, 61, 60, 59, 58 } },
-            { "avdevice",   new[] { 62, 61, 60, 59 } },
-            { "avfilter",   new[] { 11, 10, 9, 8 } },
-            { "avformat",   new[] { 62, 61, 60, 59, 58 } },
-            { "avutil",     new[] { 60, 59, 58, 57, 56 } },
-            { "swresample", new[] { 6, 5, 4, 3 } },
-            { "swscale",    new[] { 9, 8, 7, 6 } },
-        };
-        foreach (var (lib, versions) in candidates)
-        {
-            foreach (int ver in versions)
-            {
-                if (NativeLibrary.TryLoad($"lib{lib}.so.{ver}", out var handle))
-                {
-                    NativeLibrary.Free(handle);
-                    ffmpeg.LibraryVersionMap[lib] = ver;
-                    break;
-                }
-            }
-        }
+        // Pin to FFmpeg 8.1 — the major bundled under Pulsar/Libraries and
+        // the major that FFmpeg.AutoGen 8.1.0's AVCodecContext layout
+        // assumes. Falling back to older majors re-introduces struct-layout
+        // drift (FFmpeg 8 removed AVCodecContext.ticks_per_frame, so 7.x
+        // libs would shift every field after `framerate` by 4 bytes).
+        // avdevice/avfilter are intentionally omitted — we don't call them
+        // and TryLoad'ing them would drag in a second FFmpeg via transitive
+        // deps that NativeLibrary.Free cannot undo.
+        ffmpeg.LibraryVersionMap["avcodec"]    = 62;
+        ffmpeg.LibraryVersionMap["avformat"]   = 62;
+        ffmpeg.LibraryVersionMap["avutil"]     = 60;
+        ffmpeg.LibraryVersionMap["swresample"] = 6;
+        ffmpeg.LibraryVersionMap["swscale"]    = 9;
     }
 
     // ---------------- Audio ----------------
