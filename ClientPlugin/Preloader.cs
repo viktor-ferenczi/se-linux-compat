@@ -871,13 +871,30 @@ public static class Preloader
         try { VRage.Utils.MyLog.Default.WriteLineAndConsole($"[LinuxCompat] PatchCategory(\"Finish\") applied {harmony.GetPatchedMethods().Count()} methods"); } catch { }
     }
 
+    private static bool s_nativeWrappersInitialized;
+
     // Hand the wrapper libraries the absolute paths to the Windows DLLs they
     // PE-load (the SE-shipped d3dcompiler_47.dll, Havok.dll, RecastDetour.dll,
     // VRage.Native.dll). The wrapper .so files themselves are already in the
     // process via Pulsar's NativeLibraryPreloader, so the [DllImport] calls
     // these Init() methods make resolve against the preloaded handles.
+    //
+    // Guarded against duplicate invocation: Preloader.Finish() has been seen
+    // to run twice (stale LinuxCompat.dll alongside a fresh one, or another
+    // entry point also calling into the wrappers). Loading the same DLL twice
+    // through the PE loader doubles every export entry and overflows the
+    // 4096-slot table mid-Havok. The C-side Init() functions are also guarded
+    // (see Havok.cpp / D3DCompiler.cpp / RecastDetour.cpp / VRageNative.cpp);
+    // this flag is the belt to their suspenders and only helps when both
+    // duplicate calls share this assembly's static state.
     private static void InitNativeWrappers()
     {
+        if (s_nativeWrappersInitialized)
+        {
+            throw new Exception("[LinuxCompat] InitNativeWrappers: already initialized. This is the second attempt.");
+        }
+        s_nativeWrappersInitialized = true;
+
         var gameRoot = Environment.GetEnvironmentVariable("SPACE_ENGINEERS_ROOT");
         if (string.IsNullOrEmpty(gameRoot))
         {

@@ -2757,6 +2757,13 @@ extern "C" {
 
 void Init(const char* dllPath)
 {
+    if (g_havok_image.image) {
+        fprintf(stderr,
+                "[LinuxCompat] Havok::Init: already initialized (image=%p, dllPath='%s'); "
+                "ignoring duplicate call.\n",
+                g_havok_image.image, dllPath ? dllPath : "<null>");
+        return;
+    }
     InitImpl(dllPath);
 }
 

@@ -83,6 +83,14 @@ extern "C" {
 
 void Init(const char* dllPath)
 {
+    if (g_recast_image.image) {
+        fprintf(stderr,
+                "[LinuxCompat] RecastDetour::Init: already initialized (image=%p, dllPath='%s'); "
+                "ignoring duplicate call.\n",
+                g_recast_image.image, dllPath ? dllPath : "<null>");
+        return;
+    }
+
     if (!load_dll(&g_recast_image, dllPath)) {
         LogMessage("Failed to load RecastDetour.dll");
         throw std::runtime_error("Failed to load RecastDetour.dll");

@@ -41,8 +41,22 @@ static int num_pe_exports = 0;
 
 void register_function(const char *dll_name, const char *func_name, generic_func func)
 {
+    // Dedupe on name: last-writer-wins matches Windows LoadLibrary semantics
+    // for symbol resolution, and is what keeps repeated load_dll() calls from
+    // overflowing the fixed-size table.
+    for (int i = 0; i < num_pe_exports; i++) {
+        if (strcmp(pe_export_list[i].name, func_name) == 0) {
+            pe_export_list[i].dll = dll_name;
+            pe_export_list[i].addr = func;
+            return;
+        }
+    }
     if (num_pe_exports >= MAX_EXPORTS) {
-        LogMessage("Too many exports");
+        fprintf(stderr,
+            "register_function: export table full (%d), dropping %s!%s",
+            MAX_EXPORTS,
+            dll_name ? dll_name : "<null>",
+            func_name ? func_name : "<null>");
         return;
     }
     pe_export_list[num_pe_exports].dll = dll_name;

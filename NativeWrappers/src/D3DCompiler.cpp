@@ -49,6 +49,14 @@ extern "C" {
 
 void Init(const char* dllPath)
 {
+    if (g_d3dcompiler_image.image) {
+        fprintf(stderr,
+                "[LinuxCompat] D3DCompiler::Init: already initialized (image=%p, dllPath='%s'); "
+                "ignoring duplicate call.\n",
+                g_d3dcompiler_image.image, dllPath ? dllPath : "<null>");
+        return;
+    }
+
     if (!load_dll(&g_d3dcompiler_image, dllPath)) {
         fprintf(stderr, "D3DCompiler: Failed to load %s\n", dllPath);
         throw std::runtime_error("Failed to load d3dcompiler_47.dll");

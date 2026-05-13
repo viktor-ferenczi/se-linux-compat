@@ -414,6 +414,13 @@ extern "C" {
 
 void Init(const char* dllPath)
 {
+    if (g_vrage_native_image.image) {
+        fprintf(stderr,
+                "[LinuxCompat] VRageNative::Init: already initialized (image=%p, dllPath='%s'); "
+                "ignoring duplicate call.\n",
+                g_vrage_native_image.image, dllPath ? dllPath : "<null>");
+        return;
+    }
     InitImpl(dllPath);
 }
 

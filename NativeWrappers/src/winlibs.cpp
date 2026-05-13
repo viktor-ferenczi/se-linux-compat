@@ -2014,6 +2014,14 @@ WINAPI const char *ws2_32_inet_ntop(int af, const void *src, char *dst, uint32_t
 #define CRT_FUNC(suffix, name) register_function("api-ms-win-crt-" #suffix "-l1-1-0.dll", #name, generic_func(&crt_##name));
 
 void register_windows_library_functions() {
+    // The Windows-shim table is process-global and immutable after first
+    // population, so a second pass would just refill ~351 duplicate slots
+    // and is a major contributor to MAX_EXPORTS overflow when load_dll is
+    // invoked more than once.
+    static bool registered = false;
+    if (registered) return;
+    registered = true;
+
     KERNEL32_FUNC(QueryPerformanceCounter);
     KERNEL32_FUNC(QueryPerformanceFrequency);
     KERNEL32_FUNC(GetModuleHandleW);
