@@ -19,14 +19,16 @@ namespace ClientPlugin.Patches.PathHandling;
 ///   <c>/home/&lt;user&gt;/.steam/debian-installation/steamapps/common/SpaceEngineers</c>
 ///     → <c>C:\Program Files (x86)\Steam\steamapps\common\SpaceEngineers</c>
 ///   <c>/home/&lt;user&gt;/.config/SpaceEngineers</c>
-///     → <c>C:\Users\&lt;user&gt;\AppData\Roaming\SpaceEngineers</c>
+///     → <c>C:\users\steamuser\AppData\Roaming\SpaceEngineers</c>
 ///
-/// Plus <c>/tmp</c> → <c>C:\Users\&lt;user&gt;\AppData\Local\Temp</c> and a
-/// last-resort <c>$HOME</c> → <c>C:\Users\&lt;user&gt;</c>.
+/// Plus <c>/tmp</c> → <c>C:\users\steamuser\AppData\Local\Temp</c> and a
+/// last-resort <c>$HOME</c> → <c>C:\users\steamuser</c>.
 ///
-/// The username is read from <see cref="Environment.UserName"/> at plugin
-/// init. The user authorised including the bare username in mod-visible
-/// output (it already appears in the Windows reference log we mirror).
+/// The real Linux username (read from <see cref="Environment.UserName"/> at
+/// plugin init) is used only to build the Linux-side match keys. The
+/// Windows-shape output uses the Proton-conventional fixed name
+/// <c>steamuser</c> with lowercase <c>users</c>, so the actual Linux
+/// username never reaches mod-visible strings.
 ///
 /// Inputs are matched in backslash-normalized form, with or without a
 /// synthetic <c>C:</c> prefix, so the table key
@@ -87,9 +89,12 @@ public static class PathTranslation
         var homeBs = home.Replace('/', '\\');
 
         const string winSE = @"C:\Program Files (x86)\Steam\steamapps\common\SpaceEngineers";
-        var winUserSE   = @"C:\Users\" + user + @"\AppData\Roaming\SpaceEngineers";
-        var winUserHome = @"C:\Users\" + user;
-        var winTempDir  = @"C:\Users\" + user + @"\AppData\Local\Temp";
+        // Windows-shape paths use the Proton-conventional "steamuser" name
+        // (lowercase "users") so the actual Linux username never leaks into
+        // mod-visible output.
+        const string winUserSE   = @"C:\users\steamuser\AppData\Roaming\SpaceEngineers";
+        const string winUserHome = @"C:\users\steamuser";
+        const string winTempDir  = @"C:\users\steamuser\AppData\Local\Temp";
 
         var list = new List<Mapping>
         {
@@ -100,7 +105,7 @@ public static class PathTranslation
             new(homeBs + @"\.config\SpaceEngineers", winUserSE),
             // System temp.
             new(@"\tmp", winTempDir),
-            // Last resort: any path under HOME maps to C:\Users\<user>.
+            // Last resort: any path under HOME maps to C:\users\steamuser.
             new(homeBs, winUserHome),
         };
 
