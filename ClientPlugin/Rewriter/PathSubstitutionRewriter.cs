@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -31,16 +32,64 @@ namespace ClientPlugin.Rewriter;
 /// is a struct so it can't be wrapped by interface dispatch — this is the
 /// compile-time substitute for that one case.
 ///
-/// Finally, references to <c>System.Environment.NewLine</c> are replaced
-/// with the string literal <c>"\r\n"</c> so mods see the Windows line
-/// terminator (length 2) instead of Linux <c>"\n"</c> (length 1). This is
-/// a constant-fold, not a redirection to a property, so a mod that hashes
-/// or measures <c>Environment.NewLine</c> sees the same value it would on
+/// References to <c>System.Environment.NewLine</c> are replaced with the
+/// string literal <c>"\r\n"</c> so mods see the Windows line terminator
+/// (length 2) instead of Linux <c>"\n"</c> (length 1). This is a
+/// constant-fold, not a redirection to a property, so a mod that hashes or
+/// measures <c>Environment.NewLine</c> sees the same value it would on
 /// Windows.
+///
+/// Constant-folding the source-level reference is not enough on its own: BCL
+/// methods like <c>StringBuilder.AppendLine(...)</c> and
+/// <c>TextWriter.WriteLine(...)</c> read <c>Environment.NewLine</c> from
+/// inside <c>System.Private.CoreLib</c>, where the rewriter cannot reach.
+/// Two additional substitutions close that gap at every call site visible
+/// to mod source:
+/// <list type="bullet">
+///   <item><c>sb.AppendLine()</c> → <c>sb.Append("\r\n")</c>;
+///         <c>sb.AppendLine(x)</c> → <c>sb.Append(x).Append("\r\n")</c>.
+///         <c>StringBuilder.Append</c> returns the same builder so the
+///         receiver expression is evaluated exactly once, matching the
+///         original semantics.</item>
+///   <item><c>writer.WriteLine(args...)</c> →
+///         <c>WindowsTextWriter.WriteLine(writer, args...)</c>. The helper
+///         calls <c>Write(value)</c> then <c>Write("\r\n")</c> on the same
+///         writer; we route through a helper rather than inline because
+///         <c>WriteLine</c> returns <c>void</c> and cannot be chained.</item>
+/// </list>
+/// We rewrite only when the bound method symbol is declared on
+/// <c>System.Text.StringBuilder</c> / <c>System.IO.TextWriter</c>, so a
+/// mod-defined <c>AppendLine</c>/<c>WriteLine</c> on a custom type is
+/// unaffected. A <em>runtime</em> patch on <see cref="System.Environment.NewLine"/>
+/// itself is intentionally avoided — it would also affect engine and BCL
+/// callers that legitimately want the host's native newline, conflating
+/// mod-visible behaviour with internal behaviour (the same trap as
+/// postfixing a public getter to mimic an explicit interface implementation).
+///
+/// References to <see cref="System.Diagnostics.Stopwatch"/> are substituted
+/// with <see cref="WindowsStopwatch"/> wholesale — every syntactic position
+/// (type-of, <c>new</c>, variable / parameter / field / return-type
+/// declarations, generic arguments, array element types, member access,
+/// casts, …). The substitution rides on <c>VisitIdentifierName</c> and
+/// <c>VisitQualifiedName</c> filtered by
+/// <see cref="Microsoft.CodeAnalysis.INamedTypeSymbol"/> identity, so it
+/// catches every form a mod might write (<c>Stopwatch</c>,
+/// <c>System.Diagnostics.Stopwatch</c>, <c>List&lt;Stopwatch&gt;</c>,
+/// etc.) without enumerating positions. Symbol-identity filtering keeps a
+/// mod-defined type also named <c>Stopwatch</c> unaffected. Why a full
+/// type-replacement rather than per-member rewrites: a mod that allocates
+/// the type and then reads <c>ElapsedTicks</c> needs the instance itself
+/// to know about the Windows tick scale; routing through helpers would
+/// require rewrites at every read site and break <c>StartNew()</c>'s
+/// return-type contract.
 ///
 /// Limitations: <c>using static System.IO.Path;</c> followed by a bare
 /// <c>Combine(...)</c> call is not rewritten. In practice mods qualify with
-/// <c>Path.</c> or <c>System.IO.Path.</c>, which this pass handles.
+/// <c>Path.</c> or <c>System.IO.Path.</c>, which this pass handles. Other
+/// BCL writers that internally consume <c>Environment.NewLine</c>
+/// (<c>File.WriteAllLines</c>, <c>XmlWriterSettings.NewLineChars</c>'
+/// default, ...) are not yet redirected; add similar call-site rewrites if
+/// a real mod exercises them.
 /// </summary>
 internal sealed class PathSubstitutionRewriter : CSharpSyntaxRewriter
 {
@@ -49,6 +98,11 @@ internal sealed class PathSubstitutionRewriter : CSharpSyntaxRewriter
     private const string FromGameFqn = "global::ClientPlugin.Rewriter.WindowsPath.FromGame";
     private const string ModItemFqn = "global::VRage.Game.MyObjectBuilder_Checkpoint.ModItem";
     private const string EnvironmentFqn = "global::System.Environment";
+    private const string StringBuilderFqn = "global::System.Text.StringBuilder";
+    private const string TextWriterFqn = "global::System.IO.TextWriter";
+    private const string WindowsTextWriterWriteLineFqn = "global::ClientPlugin.Rewriter.WindowsTextWriter.WriteLine";
+    private const string StopwatchFqn = "global::System.Diagnostics.Stopwatch";
+    private const string WindowsStopwatchFqn = "global::ClientPlugin.Rewriter.WindowsStopwatch";
 
     private readonly SemanticModel _semanticModel;
 
@@ -119,7 +173,128 @@ internal sealed class PathSubstitutionRewriter : CSharpSyntaxRewriter
                 .WithTrailingTrivia(rewritten.GetTrailingTrivia());
         }
 
+        if (IsStringBuilderAppendLine(node))
+            return RewriteStringBuilderAppendLine(rewritten) ?? (SyntaxNode)rewritten;
+
+        if (IsTextWriterWriteLine(node))
+            return RewriteTextWriterWriteLine(rewritten) ?? (SyntaxNode)rewritten;
+
         return rewritten;
+    }
+
+    private bool IsStringBuilderAppendLine(InvocationExpressionSyntax node)
+    {
+        // Bind original (pre-rewrite) node — see VisitMemberAccessExpression.
+        if (_semanticModel.GetSymbolInfo(node).Symbol is not IMethodSymbol method)
+            return false;
+        if (method.Name != "AppendLine")
+            return false;
+        var containing = method.ContainingType;
+        if (containing == null)
+            return false;
+        // Match by declaring type so a mod-defined AppendLine on some other
+        // type is not redirected. StringBuilder.AppendLine is sealed-ish (not
+        // virtual), so the symbol's ContainingType is always StringBuilder.
+        return containing.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == StringBuilderFqn;
+    }
+
+    private SyntaxNode RewriteStringBuilderAppendLine(InvocationExpressionSyntax rewritten)
+    {
+        // Source form must be `<receiver>.AppendLine(...)`. Other invocation
+        // shapes (e.g. AppendLine(...) via using-static) aren't supported by
+        // the rest of the rewriter either, so bail.
+        if (rewritten.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return null;
+
+        var receiver = memberAccess.Expression;
+        var args = rewritten.ArgumentList.Arguments;
+
+        var crlfArg = SyntaxFactory.Argument(
+            SyntaxFactory.LiteralExpression(
+                SyntaxKind.StringLiteralExpression,
+                SyntaxFactory.Literal("\r\n")));
+
+        // sb.AppendLine() → sb.Append("\r\n")
+        if (args.Count == 0)
+        {
+            return SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        receiver,
+                        SyntaxFactory.IdentifierName("Append")),
+                    SyntaxFactory.ArgumentList(
+                        SyntaxFactory.SingletonSeparatedList(crlfArg)))
+                .WithLeadingTrivia(rewritten.GetLeadingTrivia())
+                .WithTrailingTrivia(rewritten.GetTrailingTrivia());
+        }
+
+        // sb.AppendLine(x) → sb.Append(x).Append("\r\n").
+        // Receiver appears in the rewritten tree exactly once, so it's
+        // evaluated once — same as the original AppendLine call.
+        if (args.Count == 1)
+        {
+            var inner = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    receiver,
+                    SyntaxFactory.IdentifierName("Append")),
+                SyntaxFactory.ArgumentList(
+                    SyntaxFactory.SingletonSeparatedList(args[0])));
+
+            return SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        inner,
+                        SyntaxFactory.IdentifierName("Append")),
+                    SyntaxFactory.ArgumentList(
+                        SyntaxFactory.SingletonSeparatedList(crlfArg)))
+                .WithLeadingTrivia(rewritten.GetLeadingTrivia())
+                .WithTrailingTrivia(rewritten.GetTrailingTrivia());
+        }
+
+        // Future StringBuilder.AppendLine overloads (e.g. the interpolated
+        // string handler ones in .NET 6+) — leave as-is. In-game C# 6 syntax
+        // won't produce them, but a future compiler upgrade might.
+        return null;
+    }
+
+    private bool IsTextWriterWriteLine(InvocationExpressionSyntax node)
+    {
+        if (_semanticModel.GetSymbolInfo(node).Symbol is not IMethodSymbol method)
+            return false;
+        if (method.Name != "WriteLine")
+            return false;
+        var containing = method.ContainingType;
+        if (containing == null)
+            return false;
+        // Exact match on TextWriter: a subclass that overrides WriteLine
+        // resolves to the override's declaring type and we leave it alone
+        // (the override decides what to write). For non-overridden inheritance
+        // (e.g. StringWriter, the engine's WriteFileInLocalStorage writer)
+        // Roslyn returns the base declaration here, which we want to redirect.
+        return containing.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == TextWriterFqn;
+    }
+
+    private SyntaxNode RewriteTextWriterWriteLine(InvocationExpressionSyntax rewritten)
+    {
+        if (rewritten.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return null;
+
+        var receiver = memberAccess.Expression;
+
+        // writer.WriteLine(args...) → WindowsTextWriter.WriteLine(writer, args...).
+        // Roslyn picks the matching overload from WindowsTextWriter at the
+        // mod-compile-time CreateCompilation; the helper's overload set
+        // mirrors System.IO.TextWriter.WriteLine.
+        var newArgs = SyntaxFactory.SeparatedList(
+            new[] { SyntaxFactory.Argument(receiver.WithoutTrivia()) }
+                .Concat(rewritten.ArgumentList.Arguments));
+
+        return SyntaxFactory.InvocationExpression(
+                SyntaxFactory.ParseExpression(WindowsTextWriterWriteLineFqn),
+                SyntaxFactory.ArgumentList(newArgs))
+            .WithLeadingTrivia(rewritten.GetLeadingTrivia())
+            .WithTrailingTrivia(rewritten.GetTrailingTrivia());
     }
 
     private bool IsModItemGetPath(InvocationExpressionSyntax node)
@@ -163,5 +338,64 @@ internal sealed class PathSubstitutionRewriter : CSharpSyntaxRewriter
         if (symbol is not INamedTypeSymbol named)
             return false;
         return named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == SystemIoPathFqn;
+    }
+
+    // ─── Generic type-name substitution (Stopwatch → WindowsStopwatch) ────
+    //
+    // These two overrides catch every syntactic position a type can occupy
+    // (new, typeof, variable / parameter / field / method-return /
+    // generic-arg / array-element / cast / member-access prefix) via the
+    // natural tree recursion. The filter is the bound symbol's identity,
+    // so a mod-defined type that shadows the name is untouched.
+    //
+    // For QualifiedName (e.g. `System.Diagnostics.Stopwatch`) we substitute
+    // the whole qualified path as a unit and DO NOT recurse — the inner
+    // IdentifierName would otherwise also bind to the same type symbol and
+    // try to substitute itself, corrupting the qualifier.
+
+    public override SyntaxNode VisitIdentifierName(IdentifierNameSyntax node)
+    {
+        // Skip identifiers that are the Right of a QualifiedName: the parent
+        // handler substitutes the whole path. Substituting just the leaf
+        // would leave a stale qualifier (System.Diagnostics.WindowsStopwatch).
+        if (node.Parent is QualifiedNameSyntax)
+            return base.VisitIdentifierName(node);
+
+        var replacement = TryGetTypeSubstitution(node, node.Identifier.ValueText);
+        if (replacement != null)
+            return replacement
+                .WithLeadingTrivia(node.GetLeadingTrivia())
+                .WithTrailingTrivia(node.GetTrailingTrivia());
+
+        return base.VisitIdentifierName(node);
+    }
+
+    public override SyntaxNode VisitQualifiedName(QualifiedNameSyntax node)
+    {
+        var replacement = TryGetTypeSubstitution(node, node.Right.Identifier.ValueText);
+        if (replacement != null)
+            return replacement
+                .WithLeadingTrivia(node.GetLeadingTrivia())
+                .WithTrailingTrivia(node.GetTrailingTrivia());
+
+        return base.VisitQualifiedName(node);
+    }
+
+    private SyntaxNode TryGetTypeSubstitution(SyntaxNode node, string simpleName)
+    {
+        // Cheap text gate before the expensive semantic-model lookup —
+        // VisitIdentifierName fires on every identifier in the source.
+        if (simpleName != "Stopwatch")
+            return null;
+
+        var symbol = _semanticModel.GetSymbolInfo(node).Symbol;
+        if (symbol is not INamedTypeSymbol named)
+            return null;
+
+        var fqn = named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        if (fqn == StopwatchFqn)
+            return SyntaxFactory.ParseName(WindowsStopwatchFqn);
+
+        return null;
     }
 }

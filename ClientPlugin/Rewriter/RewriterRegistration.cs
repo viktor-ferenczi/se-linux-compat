@@ -27,15 +27,29 @@ internal static class RewriterRegistration
 {
     public static void Register()
     {
-        // Make the WindowsPath shim visible to the in-game/mod script
-        // compiler. The rewriter emits qualified references to
-        // ClientPlugin.Rewriter.WindowsPath inside mod source, so the
-        // compiler needs (a) the LinuxCompat assembly on its metadata
-        // reference list, and (b) the WindowsPath type on its whitelist.
-        // Without (a) compilation fails with "type or namespace 'ClientPlugin'
-        // could not be found"; without (b) the whitelist analyzer rejects
-        // the reference as a prohibited member.
-        PlumbWindowsPathReference();
+        // Make the LinuxCompat rewriter shims visible to the in-game/mod
+        // script compiler. The rewriter emits qualified references to
+        // ClientPlugin.Rewriter.WindowsPath, WindowsTextWriter and
+        // WindowsStopwatch inside mod source, so the compiler needs (a) the
+        // LinuxCompat assembly on its metadata reference list, and (b) all
+        // shim types on its whitelist. Without (a) compilation fails with
+        // "type or namespace 'ClientPlugin' could not be found"; without
+        // (b) the whitelist analyzer rejects the references as prohibited
+        // members.
+        PlumbRewriterShimReferences();
+
+        // Force WindowsStopwatch's static initializer to run NOW (plugin
+        // init), not lazily on the mod's first GetTimestamp call. The
+        // baseline timestamp captured in the static ctor anchors what
+        // GetTimestamp() returns — anchoring it at plugin init time so it
+        // approximates "time since process start" by the time the mod runs,
+        // matching Wine/Proton's process-relative QPC shape. Without this,
+        // the mod itself would trigger the static ctor and see a near-zero
+        // value (the baseline cancels with the immediately-following read).
+        // GetTimestamp() reads non-const fields, so it actually triggers
+        // initialisation (unlike Frequency/IsHighResolution which are consts
+        // and would be inlined by the JIT without touching the type).
+        _ = WindowsStopwatch.GetTimestamp();
 
         try
         {
@@ -97,7 +111,7 @@ internal static class RewriterRegistration
         }
     }
 
-    private static void PlumbWindowsPathReference()
+    private static void PlumbRewriterShimReferences()
     {
         try
         {
@@ -105,7 +119,7 @@ internal static class RewriterRegistration
             var reference = BuildMetadataReferenceFromLoadedAssembly(asm);
             if (reference == null)
             {
-                Console.WriteLine("[LinuxCompat] WindowsPath plumb skipped: cannot extract in-memory metadata image");
+                Console.WriteLine("[LinuxCompat] Rewriter shim plumb skipped: cannot extract in-memory metadata image");
                 return;
             }
 
@@ -120,19 +134,21 @@ internal static class RewriterRegistration
             // only source whose identity matches the loaded type.
             MyScriptCompiler.Static.m_metadataReferences.Add(reference);
 
-            // Whitelist WindowsPath for both Ingame (PB scripts) and ModApi
-            // (mod scripts). The rewriter applies to every CreateCompilation,
-            // so both targets need the type allowed.
+            // Whitelist the rewriter's emitted target types for both Ingame
+            // (PB scripts) and ModApi (mod scripts). The rewriter applies to
+            // every CreateCompilation, so both targets need the types allowed.
             using (var batch = MyScriptCompiler.Static.Whitelist.OpenBatch())
             {
-                batch.AllowTypes(MyWhitelistTarget.Both, typeof(WindowsPath));
+                batch.AllowTypes(MyWhitelistTarget.ModApi, typeof(WindowsPath));
+                batch.AllowTypes(MyWhitelistTarget.ModApi, typeof(WindowsTextWriter));
+                batch.AllowTypes(MyWhitelistTarget.ModApi, typeof(WindowsStopwatch));
             }
 
-            Console.WriteLine($"[LinuxCompat] WindowsPath plumbed into MyScriptCompiler from in-memory image of {asm.GetName().Name}");
+            Console.WriteLine($"[LinuxCompat] Rewriter shims (WindowsPath, WindowsTextWriter, WindowsStopwatch) plumbed into MyScriptCompiler from in-memory image of {asm.GetName().Name}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[LinuxCompat] WindowsPath plumb failed: {ex}");
+            Console.WriteLine($"[LinuxCompat] Rewriter shim plumb failed: {ex}");
         }
     }
 
