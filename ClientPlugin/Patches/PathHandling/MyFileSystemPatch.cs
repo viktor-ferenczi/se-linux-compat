@@ -64,6 +64,12 @@ static class MyFileSystemOpenWritePatch
 
         path = path.Replace('\\', '/');
 
+        // Strip any synthetic Windows drive prefix a mod may have composed
+        // off ModContext.ModPath (see PathTranslation.Untranslate). Has to
+        // happen before the IsPathRooted gate — on Linux the BCL false-
+        // negatives "C:/..." paths and the write would silently no-op.
+        path = PathTranslation.Untranslate(path);
+
         if (!Path.IsPathRooted(path))
             return;
 
@@ -98,6 +104,12 @@ static class MyFileSystemFileExistsPatch
 
         path = path.Replace('\\', '/');
 
+        // Strip any synthetic Windows drive prefix (see PathTranslation
+        // .Untranslate). Mods that probe FileExists with an absolute path
+        // built off ModContext.ModPath would otherwise false-negative here
+        // because Path.IsPathRooted("C:/...") is false on Linux.
+        path = PathTranslation.Untranslate(path);
+
         // Resolve case-insensitively so callers like MyMeshes.LoadMwm find
         // mesh assets when on-disk casing differs from the in-game path
         // (e.g. "Models/Cubes/Small/Armor/..." vs "Models/Cubes/small/armor/...").
@@ -116,6 +128,11 @@ static class MyFileSystemDirectoryExistsPatch
             return;
 
         path = path.Replace('\\', '/');
+
+        // Strip any synthetic Windows drive prefix (see PathTranslation
+        // .Untranslate) so a "C:/users/steamuser/..." probe is matched
+        // against the real Linux directory.
+        path = PathTranslation.Untranslate(path);
 
         // Mirror FileExists: a probe for "Mods/Workshop" should see the
         // on-disk "mods/workshop". On miss, ResolveAbsolute returns the
@@ -165,6 +182,12 @@ static class MyFileSystemEnsureDirectoryExistsPatch
             return;
 
         path = path.Replace('\\', '/');
+
+        // Strip any synthetic Windows drive prefix (see PathTranslation
+        // .Untranslate). EnsureDirectoryExists with a drive-prefixed input
+        // would otherwise skip the resolve, then CreateDirectoryRecursive
+        // below would try to mkdir a "C:" segment at the FS root.
+        path = PathTranslation.Untranslate(path);
 
         if (Path.IsPathRooted(path))
             path = PathCache.ResolveAbsolute(path);

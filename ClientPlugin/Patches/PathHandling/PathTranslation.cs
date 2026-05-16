@@ -49,11 +49,18 @@ public static class PathTranslation
         public readonly string KeyNoDrive;
         // Drive-prefixed Windows path. No trailing separator.
         public readonly string Replacement;
+        // Forward-slash form of Replacement / KeyNoDrive, pre-computed so the
+        // hot Untranslate path doesn't allocate per call. Same content, just
+        // separator-flipped.
+        public readonly string ReplacementForward;
+        public readonly string KeyForward;
 
         public Mapping(string key, string replacement)
         {
             KeyNoDrive = key;
             Replacement = replacement;
+            ReplacementForward = replacement.Replace('\\', '/');
+            KeyForward = key.Replace('\\', '/');
         }
     }
 
@@ -151,5 +158,77 @@ public static class PathTranslation
         }
 
         return flipped;
+    }
+
+    /// <summary>
+    /// Reverse of <see cref="Translate"/>. Takes a forward-slash-normalized
+    /// path that may carry a synthetic Windows drive prefix (from a mod that
+    /// composed an absolute path off <c>ModContext.ModPath</c>) and returns
+    /// the original Linux path. No-op for input without a drive prefix.
+    ///
+    /// On a table hit (longest matching Windows replacement wins) the
+    /// drive-prefixed Windows prefix is swapped for the Linux key. On a
+    /// miss the drive prefix is stripped — the body is the original Linux
+    /// path that <see cref="PathHelpers.ToWindowsPath"/> promoted to
+    /// <c>C:</c> on a translation miss.
+    ///
+    /// Symmetric companion to <see cref="Translate"/>: callers that have
+    /// just done a <c>\</c>→<c>/</c> normalize can run this to recover a
+    /// Linux-rooted path that <see cref="System.IO.Path.IsPathRooted"/>
+    /// recognizes — the BCL on Linux only treats a leading <c>/</c> as a
+    /// root marker, so a path still carrying its <c>C:</c> prefix would
+    /// false-negative the rooted check and never reach disk resolution.
+    ///
+    /// Tradeoff: a real Linux file at <c>/C:/...</c> would be misread as a
+    /// drive-prefixed Windows path and rewritten. In practice nobody has
+    /// directories named <c>C:</c> at the filesystem root on Linux, and the
+    /// reverse bug (mod-emitted absolute paths failing to load) is common.
+    /// </summary>
+    public static string Untranslate(string forwardSlashPath)
+    {
+        if (string.IsNullOrEmpty(forwardSlashPath))
+            return forwardSlashPath;
+
+        // Drive prefix detection: same shape as HasDrivePrefix in WindowsPath
+        // — single letter [A-Za-z] followed by ':'. Path may continue with
+        // '/' (rooted) or another char (drive-relative); both are handled.
+        if (forwardSlashPath.Length < 2 || forwardSlashPath[1] != ':' ||
+            !((forwardSlashPath[0] >= 'A' && forwardSlashPath[0] <= 'Z') ||
+              (forwardSlashPath[0] >= 'a' && forwardSlashPath[0] <= 'z')))
+            return forwardSlashPath;
+
+        var mappings = s_mappings;
+        string bestKey = null;
+        string bestPrefix = null;
+        for (int i = 0; i < mappings.Length; i++)
+        {
+            var winPrefix = mappings[i].ReplacementForward;
+            if (forwardSlashPath.Length < winPrefix.Length)
+                continue;
+            if (string.Compare(forwardSlashPath, 0, winPrefix, 0, winPrefix.Length,
+                    StringComparison.OrdinalIgnoreCase) != 0)
+                continue;
+            // Boundary: exact match or next char is a separator. Stops a
+            // C:\users\steamuser2 input from matching the C:\users\steamuser
+            // home-fallback entry.
+            if (forwardSlashPath.Length != winPrefix.Length && forwardSlashPath[winPrefix.Length] != '/')
+                continue;
+            // Longest match wins — the array isn't sorted by Replacement
+            // length (it's sorted by KeyNoDrive length for the forward
+            // direction), so we have to scan the whole table.
+            if (bestPrefix == null || winPrefix.Length > bestPrefix.Length)
+            {
+                bestPrefix = winPrefix;
+                bestKey = mappings[i].KeyForward;
+            }
+        }
+
+        if (bestPrefix != null)
+            return bestKey + forwardSlashPath.Substring(bestPrefix.Length);
+
+        // No table hit: strip just the drive prefix. The body is the original
+        // Linux path that ToWindowsPath promoted to C: on a translation miss
+        // (e.g. a mod stored on a /mnt/... mount that isn't in the table).
+        return forwardSlashPath.Substring(2);
     }
 }

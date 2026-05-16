@@ -299,6 +299,16 @@ public static class PathCache
             return absolutePath;
 
         var path = PathHelpers.Normalize(absolutePath);
+        // Mods that build absolute paths off ModContext.ModPath (e.g.
+        // ColorfulIcons replacing every block icon with
+        // `$"{ModContext.ModPath}\\Textures\\..."`) hand us Windows-shape
+        // strings — drive-prefixed, "C:\...". Path.IsPathRooted on Linux
+        // only recognizes a leading '/' as the root marker, so without an
+        // Untranslate pass here the drive-prefixed path false-negatives the
+        // rooted check below, early-returns unchanged, and File.Exists then
+        // fails on the still-`C:`-prefixed string. Untranslate is a no-op
+        // for paths without a drive prefix.
+        path = PathTranslation.Untranslate(path);
         if (!Path.IsPathRooted(path))
             return path;
 
