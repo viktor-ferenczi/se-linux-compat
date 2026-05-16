@@ -98,6 +98,9 @@ public static class Preloader
             case "VRage.Game":
                 ClientPlugin.Patches.PathHandling.MyModContextPrepatch.Prepatch(asmDef);
                 break;
+            case "VRage.Library":
+                ClientPlugin.Patches.PathHandling.MyFileSystemOpenPrepatch.Prepatch(asmDef);
+                break;
             case "SpaceEngineers.Game":
                 PatchSpaceEngineersGame(asmDef);
                 break;

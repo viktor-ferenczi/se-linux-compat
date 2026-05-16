@@ -152,7 +152,7 @@ static class CaseInsensitivePathResolver
 /// covering immutable Content/ and Bin64/; Level 2 is a per-directory cache
 /// with mtime invalidation covering everything else.
 /// </summary>
-static class PathCache
+public static class PathCache
 {
     // ---- Level 1: static cache for Content/ and Bin64/ ----
     //

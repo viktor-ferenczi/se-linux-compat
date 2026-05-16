@@ -21,23 +21,18 @@ namespace ClientPlugin.Patches.PathHandling;
 // MyTextureCache mip-map probes) reaches Open with a lowercased path.
 // On Linux this is the failure that produced "Texture does not exist:
 // .../Content/fonts/white/fontdatapa-0.dds" while the on-disk file is
-// PascalCased. Calling PathCache.ResolveAbsolute here closes every gap
-// at once.
-[HarmonyPatch(typeof(MyFileSystem), nameof(MyFileSystem.Open))]
-[HarmonyPatchCategory("Finish")]
-static class MyFileSystemOpenPatch
-{
-    static void Prefix(ref string path)
-    {
-        if (path == null)
-            return;
-
-        path = path.Replace('\\', '/');
-
-        if (Path.IsPathRooted(path))
-            path = PathCache.ResolveAbsolute(path);
-    }
-}
+// PascalCased.
+//
+// Implemented as a Cecil prepatch (see MyFileSystemOpenPrepatch.cs) that
+// injects `path = PathCache.ResolveAbsolute(path)` into the body of
+// MyFileSystem.Open itself, rather than as a Harmony Prefix. A Prefix
+// here is silently bypassed by JIT inlining: OpenRead and Open are tiny
+// static methods with constant arguments at every call site, the JIT
+// inlines them into hot callers (e.g. ParseAtlasDescription_Patch1), and
+// the inlined IL skips the Harmony prologue stub. Putting the
+// normalization inside Open's own body means inlined copies still carry
+// it. The MyTextureAtlas regression detector in MyTextureAtlasPatch.cs
+// is the canary for any future regression of this layer.
 
 [HarmonyPatch(typeof(MyStorageBase), nameof(MyStorageBase.LoadFromFile))]
 [HarmonyPatchCategory("Finish")]
