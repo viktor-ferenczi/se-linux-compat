@@ -653,6 +653,18 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
         Exit();
     }
 
+    private void HandleManualWindowCloseRequest()
+    {
+        if (OnManualWindowCloseRequest != null && m_isVisible)
+        {
+            OnManualWindowCloseRequest();
+            return;
+        }
+
+        Hide();
+        CloseManually();
+    }
+
     /// <summary>
     /// Stub. Event polling is owned by <see cref="SdlRenderThread"/>'s loop;
     /// callers used to invoke this to nudge the SDL pump from main / SE
@@ -859,7 +871,7 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
         {
             case SDL_EVENT_QUIT:
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                CloseManually();
+                HandleManualWindowCloseRequest();
                 break;
             case SDL_EVENT_WINDOW_FOCUS_GAINED:
                 m_isActive = true;
