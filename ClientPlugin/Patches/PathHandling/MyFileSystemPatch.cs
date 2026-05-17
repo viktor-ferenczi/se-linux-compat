@@ -21,23 +21,18 @@ namespace ClientPlugin.Patches.PathHandling;
 // MyTextureCache mip-map probes) reaches Open with a lowercased path.
 // On Linux this is the failure that produced "Texture does not exist:
 // .../Content/fonts/white/fontdatapa-0.dds" while the on-disk file is
-// PascalCased. Calling PathCache.ResolveAbsolute here closes every gap
-// at once.
-[HarmonyPatch(typeof(MyFileSystem), nameof(MyFileSystem.Open))]
-[HarmonyPatchCategory("Finish")]
-static class MyFileSystemOpenPatch
-{
-    static void Prefix(ref string path)
-    {
-        if (path == null)
-            return;
-
-        path = path.Replace('\\', '/');
-
-        if (Path.IsPathRooted(path))
-            path = PathCache.ResolveAbsolute(path);
-    }
-}
+// PascalCased.
+//
+// Implemented as a Cecil prepatch (see MyFileSystemOpenPrepatch.cs) that
+// injects `path = PathCache.ResolveAbsolute(path)` into the body of
+// MyFileSystem.Open itself, rather than as a Harmony Prefix. A Prefix
+// here is silently bypassed by JIT inlining: OpenRead and Open are tiny
+// static methods with constant arguments at every call site, the JIT
+// inlines them into hot callers (e.g. ParseAtlasDescription_Patch1), and
+// the inlined IL skips the Harmony prologue stub. Putting the
+// normalization inside Open's own body means inlined copies still carry
+// it. The MyTextureAtlas regression detector in MyTextureAtlasPatch.cs
+// is the canary for any future regression of this layer.
 
 [HarmonyPatch(typeof(MyStorageBase), nameof(MyStorageBase.LoadFromFile))]
 [HarmonyPatchCategory("Finish")]
@@ -68,6 +63,12 @@ static class MyFileSystemOpenWritePatch
             return;
 
         path = path.Replace('\\', '/');
+
+        // Strip any synthetic Windows drive prefix a mod may have composed
+        // off ModContext.ModPath (see PathTranslation.Untranslate). Has to
+        // happen before the IsPathRooted gate — on Linux the BCL false-
+        // negatives "C:/..." paths and the write would silently no-op.
+        path = PathTranslation.Untranslate(path);
 
         if (!Path.IsPathRooted(path))
             return;
@@ -103,6 +104,12 @@ static class MyFileSystemFileExistsPatch
 
         path = path.Replace('\\', '/');
 
+        // Strip any synthetic Windows drive prefix (see PathTranslation
+        // .Untranslate). Mods that probe FileExists with an absolute path
+        // built off ModContext.ModPath would otherwise false-negative here
+        // because Path.IsPathRooted("C:/...") is false on Linux.
+        path = PathTranslation.Untranslate(path);
+
         // Resolve case-insensitively so callers like MyMeshes.LoadMwm find
         // mesh assets when on-disk casing differs from the in-game path
         // (e.g. "Models/Cubes/Small/Armor/..." vs "Models/Cubes/small/armor/...").
@@ -121,6 +128,11 @@ static class MyFileSystemDirectoryExistsPatch
             return;
 
         path = path.Replace('\\', '/');
+
+        // Strip any synthetic Windows drive prefix (see PathTranslation
+        // .Untranslate) so a "C:/users/steamuser/..." probe is matched
+        // against the real Linux directory.
+        path = PathTranslation.Untranslate(path);
 
         // Mirror FileExists: a probe for "Mods/Workshop" should see the
         // on-disk "mods/workshop". On miss, ResolveAbsolute returns the
@@ -170,6 +182,12 @@ static class MyFileSystemEnsureDirectoryExistsPatch
             return;
 
         path = path.Replace('\\', '/');
+
+        // Strip any synthetic Windows drive prefix (see PathTranslation
+        // .Untranslate). EnsureDirectoryExists with a drive-prefixed input
+        // would otherwise skip the resolve, then CreateDirectoryRecursive
+        // below would try to mkdir a "C:" segment at the FS root.
+        path = PathTranslation.Untranslate(path);
 
         if (Path.IsPathRooted(path))
             path = PathCache.ResolveAbsolute(path);

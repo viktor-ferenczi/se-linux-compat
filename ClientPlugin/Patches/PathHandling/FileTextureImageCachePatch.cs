@@ -22,6 +22,15 @@ static class FileTextureImageCacheLoadImagePatch
 
         filepath = filepath.Replace('\\', '/');
 
+        // Strip any synthetic Windows drive prefix the mod side may have
+        // added — a path like "C:/users/steamuser/.../Textures/foo.dds"
+        // (or "C:/mnt/win/.../foo.dds" for a mod stored on a mount that
+        // isn't in the translation table) has to become Linux-rooted
+        // before the IsPathRooted gate, otherwise the else branch
+        // Path.Combine's contentPath onto a drive-prefixed string and
+        // produces a path that doesn't exist. No-op for non-drive input.
+        filepath = PathTranslation.Untranslate(filepath);
+
         // Resolve case-insensitively relative to Content path when possible.
         if (Path.IsPathRooted(filepath))
         {
