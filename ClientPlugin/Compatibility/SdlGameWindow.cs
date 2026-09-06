@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using ClientPlugin.Patches.WindowManagement;
+using Steamworks;
 using VRage;
 using VRage.Input;
 using VRage.Utils;
@@ -50,6 +51,9 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
     private List<char> m_bufferedChars = new List<char>();
     private readonly byte[] m_keyStates = new byte[32];
     private readonly uint m_windowId;
+    private readonly SteamOverlayInput m_steamOverlayInput;
+    private readonly Callback<GameOverlayActivated_t> m_steamOverlayCallback;
+    private volatile bool m_steamOverlayActive;
 
     private Vector2I m_clientSize = new Vector2I(1280, 720);
     private Vector2I m_clientSizePixels = new Vector2I(1280, 720);
@@ -349,6 +353,19 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
         if (Handle == IntPtr.Zero)
             throw new PlatformNotSupportedException("SDL3 window creation failed.");
         m_windowId = SDL_GetWindowID(Handle);
+
+        m_steamOverlayInput = SteamOverlayInput.TryCreate(SdlRenderThread.IsWayland);
+        if (m_steamOverlayInput != null)
+        {
+            m_steamOverlayCallback = Callback<GameOverlayActivated_t>.Create(e =>
+                SdlRenderThread.Dispatch(() =>
+                {
+                    m_steamOverlayActive = e.m_bActive != 0;
+                    Array.Clear(m_keyStates, 0, m_keyStates.Length);
+                    UpdateMouseModeOnRenderThread();
+                })
+            );
+        }
 
         // Set _NET_WM_ICON before the window is mapped.
         SdlIconHelper.Apply(Handle, ResolveGameIcon());
@@ -969,7 +986,7 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
             return;
 
         SDL_GetRelativeMouseState(out var relX, out var relY);
-        if (SDL_GetMouseFocus() != Handle)
+        if (SDL_GetMouseFocus() != Handle || m_steamOverlayActive)
         {
             lock (m_bufferLock)
             {
@@ -1014,6 +1031,8 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
     {
         if (Handle != IntPtr.Zero)
         {
+            m_steamOverlayCallback?.Dispose();
+            m_steamOverlayInput?.Dispose();
             SDL_DestroyWindow(Handle);
             Handle = IntPtr.Zero;
         }
@@ -1025,6 +1044,9 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
     private void HandleEvent(ref SdlRenderThread.SdlEvent sdlEvent)
     {
         if (sdlEvent.Type != SDL_EVENT_QUIT && sdlEvent.Window.WindowId != m_windowId)
+            return;
+
+        if (ForwardSteamOverlayInput(ref sdlEvent))
             return;
 
         switch (sdlEvent.Type)
@@ -1111,6 +1133,79 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
         }
     }
 
+    private bool ForwardSteamOverlayInput(ref SdlRenderThread.SdlEvent e)
+    {
+        if (m_steamOverlayInput == null)
+            return false;
+
+        float scaleX = m_clientSizePixels.X / (float)Math.Max(1, m_clientSize.X);
+        float scaleY = m_clientSizePixels.Y / (float)Math.Max(1, m_clientSize.Y);
+        bool consumed;
+        switch (e.Type)
+        {
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                m_steamOverlayInput.Focus(true);
+                return false;
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                m_steamOverlayInput.Focus(false);
+                return false;
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_KEY_UP:
+                consumed = m_steamOverlayInput.Key(
+                    e.Keyboard.Raw,
+                    e.Keyboard.Mod,
+                    e.Type == SDL_EVENT_KEY_DOWN,
+                    e.Keyboard.Timestamp
+                );
+                break;
+            case 0x400: // SDL_EVENT_MOUSE_MOTION
+                if (!m_steamOverlayActive)
+                    return false;
+                consumed = m_steamOverlayInput.Motion(
+                    e.Motion.X * scaleX,
+                    e.Motion.Y * scaleY,
+                    e.Motion.Timestamp
+                );
+                break;
+            case 0x401: // SDL_EVENT_MOUSE_BUTTON_DOWN
+            case 0x402: // SDL_EVENT_MOUSE_BUTTON_UP
+                if (!m_steamOverlayActive)
+                    return false;
+                m_steamOverlayInput.Motion(
+                    e.Button.X * scaleX,
+                    e.Button.Y * scaleY,
+                    e.Button.Timestamp
+                );
+                consumed = m_steamOverlayInput.Button(
+                    e.Button.Button,
+                    e.Type == 0x401,
+                    e.Button.Timestamp
+                );
+                break;
+            case SDL_EVENT_MOUSE_WHEEL:
+                if (!m_steamOverlayActive)
+                    return false;
+                consumed = m_steamOverlayInput.Wheel(
+                    e.Wheel.IntegerX == 0 ? Math.Sign(e.Wheel.X) : e.Wheel.IntegerX,
+                    e.Wheel.IntegerY == 0 ? Math.Sign(e.Wheel.Y) : e.Wheel.IntegerY,
+                    e.Wheel.Timestamp
+                );
+                break;
+            case SDL_EVENT_TEXT_INPUT:
+                return m_steamOverlayActive;
+            default:
+                return false;
+        }
+
+        if (consumed || m_steamOverlayActive)
+        {
+            // Key releases can be swallowed while the overlay owns input.
+            Array.Clear(m_keyStates, 0, m_keyStates.Length);
+            return true;
+        }
+        return false;
+    }
+
     private void PersistCurrentWindowedSize()
     {
         if (
@@ -1171,10 +1266,13 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
             return;
 
         // Use relative mode whenever the game hides its software cursor.
-        SDL_SetWindowRelativeMouseMode(Handle, !m_showCursor);
+        SDL_SetWindowRelativeMouseMode(Handle, !m_showCursor && !m_steamOverlayActive);
 
         // Keep the hardware cursor hidden because it renders ahead of the software cursor.
-        SDL_HideCursor();
+        if (m_steamOverlayActive)
+            SDL_ShowCursor();
+        else
+            SDL_HideCursor();
     }
 
     private void SetKeyState(MyKeys key, bool value)
@@ -1451,6 +1549,10 @@ internal sealed class SdlGameWindow : IVRageWindow, IVRageInput, IVRageInput2
     [DllImport(Lib, EntryPoint = "SDL_HideCursor")]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool SDL_HideCursor();
+
+    [DllImport(Lib, EntryPoint = "SDL_ShowCursor")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private static extern bool SDL_ShowCursor();
 
     #endregion
 }
