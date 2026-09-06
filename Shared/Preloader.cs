@@ -14,7 +14,11 @@ using Mono.Cecil.Cil;
 public static class Preloader
 {
     // ReSharper disable once UnusedMember.Global
-    public static void Initialize() => ClientPlugin.Compatibility.NativeLibraries.Initialize();
+    public static void Initialize()
+    {
+        ClientPlugin.Compatibility.DependencyCheck.Run();
+        ClientPlugin.Compatibility.NativeLibraries.Initialize();
+    }
 
     // ReSharper disable once UnusedMember.Global
     public static IEnumerable<string> TargetDLLs { get; } =
