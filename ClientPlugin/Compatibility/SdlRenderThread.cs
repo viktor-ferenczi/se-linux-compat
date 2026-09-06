@@ -355,6 +355,12 @@ internal static class SdlRenderThread
 
         [FieldOffset(0)]
         internal SdlMouseWheelEvent Wheel;
+
+        [FieldOffset(0)]
+        internal SdlMouseMotionEvent Motion;
+
+        [FieldOffset(0)]
+        internal SdlMouseButtonEvent Button;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -413,6 +419,37 @@ internal static class SdlRenderThread
         internal float MouseY;
         internal int IntegerX;
         internal int IntegerY;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SdlMouseMotionEvent
+    {
+        internal uint Type,
+            Reserved;
+        internal ulong Timestamp;
+        internal uint WindowId,
+            Which,
+            State;
+        internal float X,
+            Y,
+            XRel,
+            YRel;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SdlMouseButtonEvent
+    {
+        internal uint Type,
+            Reserved;
+        internal ulong Timestamp;
+        internal uint WindowId,
+            Which;
+        internal byte Button,
+            Down,
+            Clicks,
+            Padding;
+        internal float X,
+            Y;
     }
 
     #endregion
