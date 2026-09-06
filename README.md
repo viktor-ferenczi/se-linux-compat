@@ -25,6 +25,28 @@ repository.
 - [Pulsar](https://github.com/SpaceGT/Pulsar/),
   which downloads and applies this plugin for you
 
+## System packages
+
+The plugin ships its own DXVK, SDL3, FFmpeg, OpenAL Soft and the PE-loader
+wrappers, but a few libraries have to come from your distribution. The plugin
+checks for them on startup and reports the missing ones by name, together with
+the package names below.
+
+| Library | Debian/Ubuntu | Fedora | Arch |
+| --- | --- | --- | --- |
+| `libvulkan.so.1` (plus a Vulkan driver for your GPU) | `libvulkan1`, `mesa-vulkan-drivers` | `vulkan-loader`, `mesa-vulkan-drivers` | `vulkan-icd-loader`, `vulkan-radeon` / `vulkan-intel` / `nvidia-utils` |
+| `libopus.so.0` | `libopus0` | `opus` | `opus` |
+| X11: `libX11.so.6`, `libXext.so.6` | `libx11-6`, `libxext6` | `libX11`, `libXext` | `libx11`, `libxext` |
+| Wayland: `libwayland-client.so.0`, `libwayland-cursor.so.0`, `libwayland-egl.so.1`, `libxkbcommon.so.0` | `libwayland-client0`, `libwayland-cursor0`, `libwayland-egl1`, `libxkbcommon0` | `libwayland-client`, `libwayland-cursor`, `libwayland-egl`, `libxkbcommon` | `wayland`, `libxkbcommon` |
+| Audio, one of: `libpipewire-0.3.so.0`, `libpulse.so.0`, `libasound.so.2` | `libpipewire-0.3-0`, `libpulse0`, `libasound2` | `pipewire-libs`, `pulseaudio-libs`, `alsa-lib` | `libpipewire`, `libpulse`, `alsa-lib` |
+
+Either the X11 or the Wayland set is enough. `SDL_VIDEODRIVER` restricts the
+check to that driver, and `offscreen` needs neither. A missing audio backend
+only logs a warning: the game starts without sound. The dedicated server needs
+none of these.
+
+The Flatpak build of Steam should already have all of them in its runtime.
+
 ## How it works
 
 Pulsar loads the plugin into the game's process before the game starts, and the
