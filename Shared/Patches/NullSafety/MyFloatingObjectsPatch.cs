@@ -6,7 +6,7 @@ namespace ClientPlugin.Patches.NullSafety;
 
 // Prevent spawns until the session exists during Linux initialization.
 [HarmonyPatch(typeof(MyFloatingObjects), "CanSpawn")]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyFloatingObjectsCanSpawnPatch
 {
     static bool Prefix(ref bool __result)

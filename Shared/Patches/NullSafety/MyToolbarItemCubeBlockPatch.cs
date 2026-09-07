@@ -6,7 +6,7 @@ using VRage.Game;
 namespace ClientPlugin.Patches.NullSafety;
 
 [HarmonyPatch(typeof(MyToolbarItemCubeBlock), "Init")]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyToolbarItemCubeBlockInitPatch
 {
     static Exception Finalizer(Exception __exception, ref bool __result)
