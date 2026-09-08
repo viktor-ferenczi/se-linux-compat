@@ -26,7 +26,7 @@ namespace ClientPlugin.Patches.NullSafety;
 // creation time (hook only when WorldSizeKm > 0) is deferred to fire time,
 // when the session settings almost certainly exist.
 [HarmonyPatch(typeof(MyPhysics), nameof(MyPhysics.CreateHkWorld))]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyPhysicsCreateHkWorldPatch
 {
     // Test hook: SE_LINUX_COMPAT_FORCE_HKWORLD_PREFIX=1 forces every world

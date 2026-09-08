@@ -5,7 +5,7 @@ using Sandbox.Game.AI;
 namespace ClientPlugin.Patches.NullSafety;
 
 [HarmonyPatch(typeof(MyAIComponent), "LoadData")]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyAIComponentLoadDataPatch
 {
     static Exception Finalizer(Exception __exception)

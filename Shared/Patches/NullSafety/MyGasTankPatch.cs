@@ -6,7 +6,7 @@ namespace ClientPlugin.Patches.NullSafety;
 
 // Return zero when session initialization races power computation; the resource sink recomputes it.
 [HarmonyPatch(typeof(MyGasTank), "ComputeRequiredPower")]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyGasTankComputeRequiredPowerPatch
 {
     static Exception Finalizer(Exception __exception, ref float __result)

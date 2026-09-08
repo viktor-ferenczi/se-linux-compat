@@ -4,7 +4,7 @@ using Sandbox.Game.Screens.Helpers;
 namespace ClientPlugin.Patches.NullSafety;
 
 [HarmonyPatch(typeof(MyAsyncSaving), "OnSnapshotDone")]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyAsyncSavingOnSnapshotDonePatch
 {
     static void Postfix()

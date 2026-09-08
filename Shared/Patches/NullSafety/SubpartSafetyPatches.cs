@@ -8,7 +8,7 @@ using SpaceEngineers.Game.Entities.Weapons;
 namespace ClientPlugin.Patches.NullSafety;
 
 [HarmonyPatch(typeof(MyLargeGatlingTurret), "OnModelChange")]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyLargeGatlingTurretOnModelChangePatch
 {
     static Exception Finalizer(Exception __exception, MyLargeGatlingTurret __instance)
@@ -24,7 +24,7 @@ static class MyLargeGatlingTurretOnModelChangePatch
 }
 
 [HarmonyPatch(typeof(MyLaserAntenna), "OnModelChange")]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyLaserAntennaOnModelChangePatch
 {
     static Exception Finalizer(Exception __exception, MyLaserAntenna __instance)
@@ -41,7 +41,7 @@ static class MyLaserAntennaOnModelChangePatch
 
 // Missing model subparts can throw during updates; retry on the next tick.
 [HarmonyPatch(typeof(MyAngleGrinder), nameof(MyAngleGrinder.UpdateAfterSimulation))]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyAngleGrinderUpdateAfterSimulationPatch
 {
     static Exception Finalizer(Exception __exception)
@@ -55,7 +55,7 @@ static class MyAngleGrinderUpdateAfterSimulationPatch
 
 // A missing Spike subpart must not abort drill initialization or later updates.
 [HarmonyPatch(typeof(MyHandDrill), "Init", typeof(VRage.ObjectBuilders.MyObjectBuilder_EntityBase))]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyHandDrillInitPatch
 {
     static Exception Finalizer(Exception __exception)
@@ -68,7 +68,7 @@ static class MyHandDrillInitPatch
 }
 
 [HarmonyPatch(typeof(MyHandDrill), nameof(MyHandDrill.UpdateAfterSimulation))]
-[HarmonyPatchCategory("Init")]
+[HarmonyPatchCategory("Finish")]
 static class MyHandDrillUpdateAfterSimulationPatch
 {
     static Exception Finalizer(Exception __exception)
