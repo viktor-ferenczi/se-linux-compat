@@ -3,9 +3,9 @@
 ## Overview
 
 This plugin contains the compatibility patches required to run Space Engineers
-natively on Linux, without Proton or Wine. Pulsar applies it automatically right
-after the `dotnet-compat` plugin, so there is nothing to install from this
-repository.
+natively on Linux, without Proton or Wine. It covers both the game client
+(loaded by Pulsar) and the dedicated server (loaded by Magnetar), so there is
+nothing to install from this repository.
 
 ## Features
 
@@ -23,7 +23,9 @@ repository.
 - [Space Engineers](https://store.steampowered.com/app/244850/Space_Engineers/) installed by Steam for Linux 
   (standard installation for Proton)
 - [Pulsar](https://github.com/SpaceGT/Pulsar/),
-  which downloads and applies this plugin for you
+  which downloads and applies this plugin for you.
+  For a dedicated server, [Magnetar](https://github.com/CometWorks/magnetar/)
+  takes that role.
 
 ## System packages
 
@@ -49,27 +51,16 @@ The Flatpak build of Steam should already have all of them in its runtime.
 
 ## How it works
 
-Pulsar loads the plugin into the game's process before the game starts, and the
-plugin uses Harmony patches to replace the Windows-only parts of the engine at
-runtime, without modifying any of the game's own files.
+The loader compiles the plugin from source and loads it into the game's process
+before the game starts. The plugin then replaces the Windows-only parts of the
+engine at runtime, without modifying any of the game's own files: DirectX 11
+runs on DXVK over Vulkan, SDL takes over the window and input, FFmpeg replaces
+DirectShow, and the game's own Windows-only native libraries keep running
+behind shim libraries that convert between the Windows and Linux ABIs. Paths
+are translated at the mod API boundary, so mods still believe they run on
+Windows.
 
-It redirects the calls bound for Windows DLLs to their Linux counterparts, so
-DirectX 11 runs on DXVK over Vulkan and the OpenAL, Steamworks and Epic SDKs
-come from their Linux builds. The game's own native libraries (`Havok`,
-`VRage.Native` and `RecastDetour`) have no Linux build, so the original Windows
-binaries keep running behind Linux shim libraries that convert between the
-Windows and Linux ABIs.
-
-An SDL implementation takes over the Win32 window, input, cursor and clipboard
-code, and video playback runs through FFmpeg instead of DirectShow.
-
-Linux filesystems are case-sensitive and use a different separator, so the
-plugin resolves the casing of the paths the game builds and keeps mods
-believing they still run on Windows.
-
-Differences that are not Linux-specific, like the ones between .NET Framework
-and the .NET 10 runtime the game now uses, show up on Windows too and belong to
-the separate `dotnet-compat` plugin, which Pulsar applies first.
+[ARCHITECTURE.md](ARCHITECTURE.md) has the details.
 
 ## Development
 
@@ -79,19 +70,21 @@ them, copy its first `PropertyGroup` into `Directory.Build.props.user`
 (git-ignored) in the repo root, wrapped in a top-level `<Project>` element, and
 fill in your paths.
 
-`Bin64` and `DS64` are auto-detected from Steam if left empty.
+`Bin64` and `DS64` are auto-detected from Steam if left empty. `Pulsar` and
+`Magnetar` enable the post-build deployment into those plugin loader folders;
+pass `-p:Pulsar= -p:Magnetar=` to build without deploying.
 
 `Shared/` compiles into both `ClientPlugin` and `ServerPlugin`; verify that both
 build. Format the code with `csharpier` before committing.
 
 ## Testing
 
-`tests/mod-api/` holds the automated mod API boundary suite (client and
-dedicated server harnesses). See [tests/mod-api/README.md](tests/mod-api/README.md).
-
-`tests/physics-border/` covers the bounded-world broad-phase border cleanup
-through both `MyPhysics.CreateHkWorld` creation paths. See
-[tests/physics-border/README.md](tests/physics-border/README.md).
+| Suite | Covers |
+| --- | --- |
+| [tests/mod-api](tests/mod-api/README.md) | The mod API boundary, on the game client and the dedicated server. Needs both. |
+| [tests/physics-border](tests/physics-border/README.md) | Bounded-world broad-phase border cleanup, through both `MyPhysics.CreateHkWorld` paths. Needs the game. |
+| [tests/path-translation](tests/path-translation/README.md) | The root mapping in `PathTranslation.Init()`. Standalone. |
+| [tests/steam-overlay](tests/steam-overlay/README.md) | The Wayland Steam overlay input bridge. Standalone, with an optional live check. |
 
 ## Bug reports
 

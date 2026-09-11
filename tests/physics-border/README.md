@@ -7,8 +7,9 @@ so in a bounded world (`WorldSizeKm > 0`) Havok removes any body that crosses
 the broad-phase border. Vanilla hooks `HavokWorld_EntityLeftWorld` so SE closes
 the entity and logs `HavokWorld_EntityLeftWorld removed entity ...`; without
 that handler the removal is Havok-only and SE keeps driving a stale broad-phase
-handle. The patch's settings-less replacement path historically skipped the
-hookup; it now defers the WorldSizeKm decision to event-fire time.
+handle. The patch's settings-less replacement path runs before the session
+settings exist, so it defers the `WorldSizeKm` decision to event-fire time and
+hooks the handler unconditionally.
 
 ## What it does
 
@@ -50,5 +51,5 @@ Exit 0 = pass. Same environment requirements as `tests/mod-api/run.sh`
   tree), so only the drift-across scenario exercises the callback.
 - The driver exits the game gracefully so the session-unload ordering lands in
   the same log; `run.sh` counts `[LinuxCompat] CreateHkWorld replacement path`
-  lines to keep an empirical record of when the settings-less path fires
-  (as of 2026-08-31: never, on boot, menu, world load, or unload).
+  lines, so phase A records whether the settings-less path fires at all during
+  boot, menu, world load or unload.

@@ -11,13 +11,21 @@ wrappers in `Shared/Patches/PathHandling/ModApiWrappers/` + the
 
 - `LinuxCompatDiagnostics/` - the test mod (source of truth; deployed to
   `~/.config/SpaceEngineers/Mods/` by the harness). A session component runs
-  ~260 expected-vs-actual probes during world load and writes
+  ~410 expected-vs-actual probes during world load and writes
   `Storage/LinuxCompatDiagnostics_LinuxCompatDiagnostics/LinuxCompatDiagnostics.log`.
 - `run.sh` - client harness: build plugin, deploy mod, clear the
   compiled-mods cache, start the game headless, load the diagnostics world,
   wait for the suite, parse results. Exit 0 = green.
 - `drive_client.py` - Remote-API driver used by `run.sh` (needs the
   `se-remote` skill checkout, `SE_REMOTE_DIR`).
+- `run-server.sh` - dedicated server harness: build plugin, prepare the local
+  Magnetar DS instance, clear the compiled-mods cache, launch the DS offline
+  with `-noimplicitmod`, wait for the suite, parse results. Exit 0 = green.
+- `prepare_ds.py` - DS preparation used by `run-server.sh`: the offline
+  fake-Workshop registration of the mod (the DS rejects local mods in
+  multiplayer and cannot download Workshop items offline), the scratch world
+  that references it, and the `<LoadWorld>` pointer. Idempotent; run only
+  while the DS is stopped.
 - `parse_results.py` - log parser; usable standalone on a suite log. Reports
   the security probes as their own section and enforces the manifest.
 - `security-probes.txt` - the security probe manifest (see below).
@@ -34,7 +42,7 @@ the owner:
   disk, 10 MHz Stopwatch). A FAIL is a linux-compat bug.
 - `[DOTNET]` - expected value is what **raw .NET 10 on Windows** gives
   (`Encoding.Default` = UTF-8, no codepage 1252, ICU collation, culture
-  formatting). A FAIL is filed against the `se-dotnet-compat` repo, not here -
+  formatting). A FAIL is filed against the `dotnet-compat` repo, not here -
   it either shows a dotnet-compat shim in action (verify its intent there) or
   a genuine dotnet-compat gap.
 
@@ -63,7 +71,7 @@ halves, so neither direction can regress unnoticed:
   write/exists/read/delete round trip in local, world and global storage.
 
 The audit these cover is
-`~/dev/se1/pulsar-tests/se1/reports/security/mod-path-audit.md`.
+`~/ws/se/pulsar-tests/se1/reports/security/mod-path-audit.md`.
 
 `security-probes.txt` lists every security probe name a green run reports.
 `parse_results.py --security-manifest` fails the run when one of them is
@@ -96,17 +104,19 @@ so results survive a broken storage API.
   game instance runs — the machine-wide advisory lock shared with the other
   automation sessions (auto-released if the holder dies). They wait up to 15
   minutes for it.
-- DS provenance requirements (both were silent-failure modes): the Magnetar
-  sources entry for `se-linux-compat` must point at the
-  `~/dev/se1/se-linux-compat` symlink (the dev-folder plugin id is the folder
-  basename, and only the id `se-linux-compat` overrides the implicit core
-  plugin — otherwise the GitHub release is loaded), and the profile's
-  `DataFile` must be `ServerPlugin/ServerPlugin.xml`.
+- DS provenance requirements (both are silent-failure modes): the Magnetar
+  local plugin source must be named `linux-compat` — only a name matching the
+  plugin id overrides the implicit core plugin, otherwise the GitHub release is
+  loaded — and its `File` must be `ServerPlugin/ServerPlugin.xml`. Both live in
+  `~/.config/Magnetar/Magnetar/Sources/sources.xml`.
 - The compiled-mods cache clear in `run.sh` is REQUIRED: dev builds randomize
   the plugin assembly identity, and cached mods pin the stale assembly
   (world load then fails with `FileNotFoundException: LinuxCompat_...`).
-- `run.sh` verifies a randomized `LinuxCompat_*` assembly name appears in the
-  game log - proof the working tree was compiled, not a shipped plugin build.
+- Both harnesses verify that a randomized `LinuxCompat*` assembly name appears
+  - proof the working tree was compiled, not a shipped plugin build. Pulsar
+  reports it in the game log (`LinuxCompat_<random>.<random>`); Magnetar
+  reports it only on the launcher's stdout, which `run-server.sh` captures, and
+  includes the dev-folder hash (`LinuxCompat-<hash>_<random>.<random>`).
 - `TestData/CaseSensitivity/casepair.txt` (lowercase sibling of
   `CasePair.txt`) is generated at deploy time; a file pair differing only in
   case cannot be committed without breaking Windows checkouts.
@@ -115,8 +125,6 @@ so results survive a broken storage API.
   wrong casing to exercise the definition/asset pipeline; a second definition
   is mutated at runtime to a Windows-shaped absolute path to exercise the
   `PathCache.ResolveAbsolute` ingress funnel.
-- Dedicated server: the suite mod is API-compatible with the DS, but the DS
-  rejects local mods in multiplayer and cannot download Workshop items
-  offline; running it there needs the fake-Workshop registration procedure
-  (content/244850/<id> + appworkshop ACF entries, crossplay off,
-  `-noimplicitmod`). Not automated yet.
+- Dedicated server: the mod runs unchanged there and writes the same log
+  format, so `run-server.sh` parses the results with the same parser. It
+  passes no security manifest; the manifest is enforced on the client run.

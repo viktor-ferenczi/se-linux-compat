@@ -22,11 +22,11 @@ dotnet build tests/steam-overlay/SteamOverlayInputTests.csproj
 env SteamAppId=244850 SteamGameId=244850 \
     ENABLE_VK_LAYER_VALVE_steam_overlay_1=1 \
     LD_PRELOAD="$HOME/.steam/steam/ubuntu12_64/gameoverlayrenderer.so" \
-    SDL_VIDEO_DRIVER=wayland \
+    SDL_VIDEODRIVER=wayland \
     dotnet tests/steam-overlay/bin/Debug/net10.0/SteamOverlayInputTests.dll --native
 ```
 
-Repeat with `SDL_VIDEO_DRIVER=x11` for the X11 baseline. That run checks that no
+Repeat with `SDL_VIDEODRIVER=x11` for the X11 baseline. That run checks that no
 bridge is created and controller input continues normally. These driver choices
 apply only to the test process; the plugin never sets an SDL video driver.
 
@@ -37,8 +37,8 @@ without Steam injection do not create a bridge. Mouse motion stays on the
 existing path while the overlay is closed, and SDL controller handling is
 unchanged.
 
-The old LinuxCompat version forced X11; the newer native Wayland path exposed
-Steam's missing native Wayland input hooks. See
+The bridge exists because Steam has no native Wayland input hooks, so the
+overlay gets no input from a game running on Wayland. See
 [Valve's tracking issue](https://github.com/ValveSoftware/steam-for-linux/issues/8020)
 and the similar Xlib input-proxy approach in
 [Proton-GE's overlay bridge](https://github.com/GloriousEggroll/proton-ge-custom/tree/master/lsteamclient/overlay_bridge).

@@ -10,7 +10,7 @@ using VRage.Utils;
 namespace LinuxCompatDiagnostics
 {
     /// <summary>
-    /// Automated test suite for the mod API boundary of the se-linux-compat
+    /// Automated test suite for the mod API boundary of the linux-compat
     /// plugin, run inside the game as a session component.
     ///
     /// Every probe is an expected-vs-actual assertion tagged with the plugin
@@ -18,11 +18,11 @@ namespace LinuxCompatDiagnostics
     ///   [LINUX]  - Linux-only semantics (paths, separators, drive letters,
     ///              casing, CRLF on disk, Stopwatch shims). Expected value =
     ///              what the same mod observes on Windows. FAILs are
-    ///              se-linux-compat bugs.
+    ///              linux-compat bugs.
     ///   [DOTNET] - .NET 10 vs .NET Framework semantics that reproduce on
     ///              Windows too (Encoding.Default, codepages, ICU collation,
     ///              culture formatting). Expected value = raw .NET 10 on
-    ///              Windows. FAILs are follow-up items for se-dotnet-compat,
+    ///              Windows. FAILs are follow-up items for dotnet-compat,
     ///              NOT linux-compat bugs (they may also indicate an active
     ///              dotnet-compat shim; verify intent there).
     ///
