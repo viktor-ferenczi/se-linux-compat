@@ -56,10 +56,11 @@ finally
     Environment.SetEnvironmentVariable("LD_PRELOAD", original);
 }
 
-Check(
-    !MyWindowsSystemOpenUrlPatch.TryOpen(
-        new ProcessStartInfo("/missing-linux-compat-test/browser")
-    ),
+CheckPrefixResult("https://example.invalid/", true, "successful launch returns true to the game");
+BrowserLaunchTests.BrowserProcess.Executable = "/missing-linux-compat-test/browser";
+CheckPrefixResult(
+    "https://example.invalid/",
+    false,
     "Win32Exception returns false for the game's existing browser-failure popup"
 );
 Check(
@@ -67,15 +68,19 @@ Check(
     "missing executable logged"
 );
 foreach (var url in new[] { "not a URI", "file:///etc/passwd", "steam://install/1" })
+    CheckPrefixResult(url, false, "invalid or unsupported URL reports failure");
+Console.WriteLine("Browser launch checks passed.");
+
+static void CheckPrefixResult(string url, bool expected, string message)
 {
-    object[] parameters = { url, true };
+    object[] parameters = { url, !expected };
     var runOriginal = (bool)
         typeof(MyWindowsSystemOpenUrlPatch)
             .GetMethod("Prefix", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, parameters)!;
-    Check(!runOriginal && !(bool)parameters[1], "invalid or unsupported URL reports failure");
+    Check(!runOriginal, "prefix skips the original Windows method");
+    Check((bool)parameters[1] == expected, message);
 }
-Console.WriteLine("Browser launch checks passed.");
 
 static void Check(bool condition, string message)
 {

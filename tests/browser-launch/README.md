@@ -2,9 +2,12 @@
 
 Run `dotnet run --project tests/browser-launch/BrowserLaunchTests.csproj`.
 
-The tests compile the actual URL patch with small Harmony/logging stubs. They
-check selective removal of `gameoverlayrenderer.so` from colon/space-separated
-`LD_PRELOAD`, preservation of unrelated preloads and environment values, an
+The tests compile the actual URL patch with small Harmony/logging stubs. A
+test-only Process alias directly launches `/bin/true` or a missing executable,
+exercising success and the prefix's Win32Exception handler without handing the
+test path to a desktop opener. They distinguish the prefix's skip-original return
+from the game-visible result and check selective removal of `gameoverlayrenderer.so`
+from colon/space-separated `LD_PRELOAD`, preservation of unrelated preloads and environment values, an
 unchanged parent environment, retention of `UseShellExecute`, and failure
 results/logging for a missing executable or invalid URL. Environment changes in
 the test program are fixtures restored in `finally`; production only changes

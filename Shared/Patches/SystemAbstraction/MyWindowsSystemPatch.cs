@@ -175,12 +175,22 @@ static class MyWindowsSystemOpenUrlPatch
         {
             var uri = new Uri(url);
             if (uri.Scheme == "https")
-                __result = TryOpen(CreateStartInfo(uri));
+            {
+                using var process = Process.Start(CreateStartInfo(uri));
+                __result = process != null;
+            }
+        }
+        catch (Win32Exception ex)
+        {
+            MyLog.Default?.WriteLineAndConsole(
+                $"[LinuxCompat] Cannot start the default browser. Check that a desktop URL launcher and browser are installed: {ex}"
+            );
         }
         catch (Exception ex)
         {
             MyLog.Default?.WriteLineAndConsole($"[LinuxCompat] Cannot open browser URL: {ex}");
         }
+        // Skip the Windows implementation; __result controls the game's browser-failure popup.
         return false;
     }
 
@@ -198,28 +208,5 @@ static class MyWindowsSystemOpenUrlPatch
             );
         }
         return startInfo;
-    }
-
-    internal static bool TryOpen(ProcessStartInfo startInfo)
-    {
-        try
-        {
-            using var process = Process.Start(startInfo);
-            return process != null;
-        }
-        catch (Win32Exception ex)
-        {
-            MyLog.Default?.WriteLineAndConsole(
-                $"[LinuxCompat] Cannot start the default browser. Check that a desktop URL launcher and browser are installed: {ex}"
-            );
-        }
-        catch (Exception ex)
-        {
-            MyLog.Default?.WriteLineAndConsole(
-                $"[LinuxCompat] Cannot start the browser launcher: {ex}"
-            );
-        }
-        // MyGuiSandbox.OpenExternalBrowser displays the existing failure popup on false.
-        return false;
     }
 }
