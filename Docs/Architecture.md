@@ -179,3 +179,19 @@ launcher sets before any plugin runs, so the plugin knows nothing about Steam
 or where the game was installed. Matching accepts paths with or without the
 synthetic drive prefix, and the mapping is asymmetric, so both directions are
 tested in [tests/path-translation](../tests/path-translation/README.md).
+
+### Paths arriving from a server, `VicinityModelPathPatch`
+
+One class of path comes from neither a mod nor this machine. A server answers a
+vicinity-cache request with its own `MyModel.AssetName` strings: Content-relative
+for vanilla assets, but its absolute on-disk paths for mod assets. Those are a
+Keen bug, useless on every client, Windows included.
+
+The rewriter and the ingress funnel have nothing to say about them, so
+`MySession.PreloadVicinityCache` is prefixed instead: paths are rewritten onto
+this client's own mod folders by published file id, and whatever stays
+unreachable is dropped rather than handed to the render thread. Without that, a
+Windows server's `G:\` reaches `PathTranslation.Untranslate` with no mapping,
+loses its drive, and fails as a missing mesh asset with an `IngressGuard` report
+attached. The rewrite itself is covered by
+[tests/vicinity-model-paths](../tests/vicinity-model-paths/README.md).
