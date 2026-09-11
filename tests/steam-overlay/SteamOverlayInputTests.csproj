@@ -6,5 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../ClientPlugin/Compatibility/SteamOverlayInput.cs" Link="SteamOverlayInput.cs" />
+    <Compile Include="../../Shared/Patches/SystemAbstraction/MyWindowsSystemPatch.cs" Link="MyWindowsSystemPatch.cs" />
+    <PackageReference Include="Lib.Harmony" Version="2.4.2" />
   </ItemGroup>
 </Project>
