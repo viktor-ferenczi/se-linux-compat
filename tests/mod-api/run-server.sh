@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 INSTANCE="$HOME/.config/SpaceEngineersDedicated"
-LAUNCHER="$HOME/.local/share/Magnetar/MagnetarInterim"
+LAUNCHER="$HOME/.config/Magnetar/MagnetarInterim.bin"
 DS64="${DS64:-$HOME/.steam/steam/steamapps/common/SpaceEngineersDedicatedServer/DedicatedServer64}"
 FAKE_ID=900000001
 SUITE_LOG="$INSTANCE/Storage/$FAKE_ID.sbm_LinuxCompatDiagnostics/LinuxCompatDiagnostics.log"
@@ -113,11 +113,15 @@ if [ "$RESULT" != "done" ]; then
     fail "suite did not complete on the dedicated server"
 fi
 
-# 6. Confirm the dev-folder plugin build was used.
-if [ -n "$DS_LOG" ] && grep -qoE 'LinuxCompat(Server)?_[a-z0-9]+\.[a-z0-9]+' "$DS_LOG"; then
-    echo "verified: dev-folder LinuxCompat assembly loaded ($(grep -oE 'LinuxCompat(Server)?_[a-z0-9]+\.[a-z0-9]+' "$DS_LOG" | head -1))"
+# 6. Confirm the dev-folder plugin build was used. Magnetar reports the
+#    randomized assembly identity (LinuxCompat-<folder hash>_<random>.<random>)
+#    on the launcher's stdout, not in the DS log.
+MARKER_RX='LinuxCompat(Server)?(-[0-9a-f]+)?_[a-z0-9]+\.[a-z0-9]+'
+MARKER="$(grep -hoE "$MARKER_RX" "$DS_OUT" ${DS_LOG:+"$DS_LOG"} 2>/dev/null | head -1)"
+if [ -n "$MARKER" ]; then
+    echo "verified: dev-folder LinuxCompat assembly loaded ($MARKER)"
 else
-    echo "WARNING: no randomized LinuxCompat assembly marker in the DS log" >&2
+    echo "WARNING: no randomized LinuxCompat assembly marker in $DS_OUT - the run may have used a shipped plugin build!" >&2
 fi
 
 # 7. Parse and report.
