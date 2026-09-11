@@ -74,11 +74,7 @@ internal static unsafe class MySdlAudioInterop
             {
                 throw new FileNotFoundException("Audio file was not found.", path);
             }
-            byte[] decoded = MyFfmpegAudioInterop.LoadAudioBytes(
-                virtualData,
-                path,
-                out waveFormat
-            );
+            byte[] decoded = MyFfmpegAudioInterop.LoadAudioBytes(virtualData, path, out waveFormat);
             MyLog.Default?.WriteLine(
                 $"[LinuxCompat] Loaded audio through the virtual file system: '{path}' "
                     + $"({virtualData.Length} bytes -> {decoded.Length} PCM bytes)"
@@ -460,7 +456,13 @@ internal static unsafe class MyFfmpegAudioInterop
                 ffmpeg.avcodec_open2(codecContext, codec, null),
                 $"open decoder for '{path}'"
             );
-            return DecodeAudioStream(path, formatContext, streamIndex, codecContext, out waveFormat);
+            return DecodeAudioStream(
+                path,
+                formatContext,
+                streamIndex,
+                codecContext,
+                out waveFormat
+            );
         }
         finally
         {

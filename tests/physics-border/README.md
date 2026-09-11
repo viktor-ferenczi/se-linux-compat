@@ -5,24 +5,27 @@ Covers `MyPhysicsCreateHkWorldPatch` (Shared/Patches/NullSafety/MyPhysicsPatch.c
 Both `MyPhysics.CreateHkWorld` paths configure `BROADPHASE_BORDER_REMOVE_ENTITY`,
 so in a bounded world (`WorldSizeKm > 0`) Havok removes any body that crosses
 the broad-phase border. Vanilla hooks `HavokWorld_EntityLeftWorld` so SE closes
-the entity and logs `HavokWorld_EntityLeftWorld removed entity ...`; without
+the entity and logs `HavokWorld_EntityLeftWorld removed entity ...`. Without
 that handler the removal is Havok-only and SE keeps driving a stale broad-phase
-handle. The patch's settings-less replacement path historically skipped the
-hookup; it now defers the WorldSizeKm decision to event-fire time.
+handle. The patch's settings-less replacement path runs before the session
+settings exist, so it defers the `WorldSizeKm` decision to event-fire time and
+hooks the handler unconditionally.
 
 ## What it does
 
 `run.sh` deploys the committed 1 km world (`world/`, regenerate with
-`make_world.py`), whose single-block dynamic grid **BorderDriftShip** starts at
+`make_world.py`). Its single-block dynamic grid BorderDriftShip starts at
 x=400 m drifting outward at 80 m/s and crosses the border (world boundary
 ±500 m, inflated 200 m by MyClusterTree) a few seconds into the session. Both
-phases assert the SE-side cleanup line appears in the game log:
+phases assert that the SE-side cleanup line appears in the game log:
 
-- **Phase A** — vanilla creation path (settings present, prefix falls through).
-  Also asserts the settings-less replacement path did NOT fire.
-- **Phase B** — `SE_LINUX_COMPAT_FORCE_HKWORLD_PREFIX=1` forces every HkWorld
-  through the patch's replacement path; the cleanup must arrive via the
-  deferred `EntityLeftWorld` handler. Asserts the replacement path DID fire.
+- Phase A uses the vanilla creation path (settings present, prefix falls
+  through). It also asserts that the settings-less replacement path did NOT
+  fire.
+- Phase B sets `SE_LINUX_COMPAT_FORCE_HKWORLD_PREFIX=1`, forcing every HkWorld
+  through the patch's replacement path. The cleanup must arrive via the
+  deferred `EntityLeftWorld` handler, and the phase asserts that the
+  replacement path DID fire.
 
 ```bash
 tests/physics-border/run.sh            # build + phase A + phase B
@@ -49,6 +52,6 @@ Exit 0 = pass. Same environment requirements as `tests/mod-api/run.sh`
   (`MyClusterTree.AddObject` returns `ulong.MaxValue` for a single-cluster
   tree), so only the drift-across scenario exercises the callback.
 - The driver exits the game gracefully so the session-unload ordering lands in
-  the same log; `run.sh` counts `[LinuxCompat] CreateHkWorld replacement path`
-  lines to keep an empirical record of when the settings-less path fires
-  (as of 2026-08-31: never, on boot, menu, world load, or unload).
+  the same log. `run.sh` counts `[LinuxCompat] CreateHkWorld replacement path`
+  lines, so phase A records whether the settings-less path fires at all during
+  boot, menu, world load or unload.

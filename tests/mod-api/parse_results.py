@@ -15,7 +15,7 @@ Failures are reported in three sections:
              boundary escape or an over-tightened check, and is reported first
              regardless of owner tag
   [LINUX]  - linux-compat bugs (Windows-semantics expectations broken)
-  [DOTNET] - follow-up items for the se-dotnet-compat repo (raw .NET 10
+  [DOTNET] - follow-up items for the dotnet-compat repo (raw .NET 10
              expectations broken; may indicate an active dotnet-compat shim)
 
 The security manifest is the regression net for the containment checks: it
@@ -171,7 +171,7 @@ def main() -> int:
         print_failures("[LINUX] failures - linux-compat bugs", linux_failed)
 
     if dotnet_failed:
-        print_failures("[DOTNET] failures - follow-ups for se-dotnet-compat", dotnet_failed)
+        print_failures("[DOTNET] failures - follow-ups for dotnet-compat", dotnet_failed)
 
     if fatal:
         print()
