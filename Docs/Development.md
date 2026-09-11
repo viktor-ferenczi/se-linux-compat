@@ -65,6 +65,20 @@ None of these are needed for normal play; they exist for isolating defects.
 Differences that are not Linux-specific belong elsewhere. The game runs on
 .NET 10, and anything that also reproduces on Windows — `Encoding.Default`,
 missing codepages, ICU collation, culture formatting — is owned by the
-`dotnet-compat` plugin, which both loaders apply first. The mod API suite tags
-every probe with the owning plugin for exactly this reason; see
-[tests/mod-api/README.md](../tests/mod-api/README.md).
+`dotnet-compat` plugin, which both loaders apply first. A bug that reproduces
+on Windows is filed against the `dotnet-compat` repository, not this one. The
+mod API suite tags every probe with the owning plugin for exactly this reason;
+see [tests/mod-api/README.md](../tests/mod-api/README.md).
+
+The other rule that decides where a change goes is the path translation
+boundary, in
+[Architecture.md](Architecture.md#paths-and-mod-semantics): never patch an
+internal game method just to make it tolerate a mod-shaped path.
+
+## Documentation
+
+`README.md` is the user-facing overview. Keep it short enough to skim: what the
+plugin is, what it gives you, and links. Everything else goes in this folder —
+`Installation.md`, `Architecture.md`, `Development.md`, `Testing.md` — and each
+document opens with one or two sentences on what it covers. A test suite
+documents itself in its own `tests/<suite>/README.md`.
