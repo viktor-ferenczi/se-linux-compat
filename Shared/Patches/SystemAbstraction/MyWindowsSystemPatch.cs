@@ -3,7 +3,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using HarmonyLib;
 
 namespace ClientPlugin.Patches.SystemAbstraction;
@@ -166,8 +165,6 @@ static class MyWindowsSystemLogEnvironmentInformationPatch
 [HarmonyPatchCategory("Finish")]
 static class MyWindowsSystemOpenUrlPatch
 {
-    const string SteamOverlayLibrary = "gameoverlayrenderer.so";
-
     static bool Prefix(string url, ref bool __result)
     {
         try
@@ -175,9 +172,9 @@ static class MyWindowsSystemOpenUrlPatch
             var uri = new Uri(url);
             if (uri.Scheme == "https")
             {
-                using var process = Process.Start(CreateStartInfo(uri));
-                __result = process != null;
-                return false;
+                Process.Start(
+                    new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true }
+                );
             }
             __result = true;
         }
@@ -186,58 +183,5 @@ static class MyWindowsSystemOpenUrlPatch
             __result = false;
         }
         return false;
-    }
-
-    internal static ProcessStartInfo CreateStartInfo(Uri uri)
-    {
-        var startInfo = new ProcessStartInfo("xdg-open") { UseShellExecute = false };
-        startInfo.ArgumentList.Add(uri.ToString());
-        SanitizeEnvironment(startInfo);
-        return startInfo;
-    }
-
-    internal static void SanitizeEnvironment(ProcessStartInfo startInfo)
-    {
-        if (startInfo.Environment.TryGetValue("LD_PRELOAD", out var preload))
-        {
-            string sanitized = string.Join(
-                Path.PathSeparator,
-                (preload ?? string.Empty)
-                    .Split([Path.PathSeparator, ' '], StringSplitOptions.RemoveEmptyEntries)
-                    .Where(path =>
-                        !string.Equals(
-                            Path.GetFileName(path),
-                            SteamOverlayLibrary,
-                            StringComparison.Ordinal
-                        )
-                    )
-            );
-
-            if (sanitized.Length == 0)
-                startInfo.Environment.Remove("LD_PRELOAD");
-            else
-                startInfo.Environment["LD_PRELOAD"] = sanitized;
-        }
-
-        RestoreHostVariable(startInfo, "LD_LIBRARY_PATH", "SYSTEM_LD_LIBRARY_PATH");
-        startInfo.Environment.Remove("ENABLE_VK_LAYER_VALVE_steam_overlay_1");
-        startInfo.Environment.Remove("ENABLE_VK_LAYER_VALVE_steam_fossilize_1");
-        startInfo.Environment["DISABLE_VK_LAYER_VALVE_steam_overlay_1"] = "1";
-        startInfo.Environment["DISABLE_VK_LAYER_VALVE_steam_fossilize_1"] = "1";
-    }
-
-    static void RestoreHostVariable(
-        ProcessStartInfo startInfo,
-        string variable,
-        string hostVariable
-    )
-    {
-        if (!startInfo.Environment.TryGetValue(hostVariable, out var value))
-            return;
-
-        if (string.IsNullOrEmpty(value))
-            startInfo.Environment.Remove(variable);
-        else
-            startInfo.Environment[variable] = value;
     }
 }

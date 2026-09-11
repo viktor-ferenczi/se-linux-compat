@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using ClientPlugin.Compatibility;
-using ClientPlugin.Patches.SystemAbstraction;
 
 void Check(bool value, string message)
 {
@@ -23,38 +22,6 @@ Check(
 );
 Check(SteamOverlayInput.ToXModifiers(0x7fc3) == 223, "Combined modifiers");
 Check(SteamOverlayInput.TryCreate(false) == null, "X11 never creates an input bridge");
-
-var browser = MyWindowsSystemOpenUrlPatch.CreateStartInfo(new Uri("https://example.com/a?b=c"));
-browser.Environment["LD_PRELOAD"] =
-    ":/steam/ubuntu12_32/gameoverlayrenderer.so:/steam/ubuntu12_64/gameoverlayrenderer.so libkeep.so";
-browser.Environment["LD_LIBRARY_PATH"] = "/steam/runtime";
-browser.Environment["SYSTEM_LD_LIBRARY_PATH"] = "/usr/lib64";
-browser.Environment["ENABLE_VK_LAYER_VALVE_steam_overlay_1"] = "1";
-browser.Environment["ENABLE_VK_LAYER_VALVE_steam_fossilize_1"] = "1";
-browser.Environment["SteamGameId"] = "244850";
-MyWindowsSystemOpenUrlPatch.SanitizeEnvironment(browser);
-Check(browser.FileName == "xdg-open" && !browser.UseShellExecute, "Direct xdg-open launch");
-Check(browser.ArgumentList.Single() == "https://example.com/a?b=c", "URL is one argument");
-Check(browser.Environment["LD_PRELOAD"] == "libkeep.so", "Preserve unrelated preloads");
-Check(browser.Environment["LD_LIBRARY_PATH"] == "/usr/lib64", "Restore host libraries");
-Check(browser.Environment["SteamGameId"] == "244850", "Preserve game identity");
-Check(
-    !browser.Environment.ContainsKey("ENABLE_VK_LAYER_VALVE_steam_overlay_1")
-        && !browser.Environment.ContainsKey("ENABLE_VK_LAYER_VALVE_steam_fossilize_1"),
-    "Remove Steam Vulkan layer opt-ins"
-);
-Check(
-    browser.Environment["DISABLE_VK_LAYER_VALVE_steam_overlay_1"] == "1"
-        && browser.Environment["DISABLE_VK_LAYER_VALVE_steam_fossilize_1"] == "1",
-    "Disable Steam Vulkan layers"
-);
-
-browser.Environment["LD_PRELOAD"] = "/steam/gameoverlayrenderer.so";
-browser.Environment["SYSTEM_LD_LIBRARY_PATH"] = string.Empty;
-MyWindowsSystemOpenUrlPatch.SanitizeEnvironment(browser);
-Check(!browser.Environment.ContainsKey("LD_PRELOAD"), "Remove overlay-only preload");
-Check(!browser.Environment.ContainsKey("LD_LIBRARY_PATH"), "Restore empty host library path");
-
 if (!args.Contains("--native"))
 {
     Environment.SetEnvironmentVariable("DISABLE_VK_LAYER_VALVE_steam_overlay_1", "1");
