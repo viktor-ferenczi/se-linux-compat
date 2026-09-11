@@ -1,9 +1,11 @@
 // Prepatch methods whose PerformanceCounter or P/Invoke references prevent Harmony IL parsing.
 
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using HarmonyLib;
+using VRage.Utils;
 
 namespace ClientPlugin.Patches.SystemAbstraction;
 
@@ -167,21 +169,40 @@ static class MyWindowsSystemOpenUrlPatch
 {
     static bool Prefix(string url, ref bool __result)
     {
+        __result = false;
         try
         {
             var uri = new Uri(url);
             if (uri.Scheme == "https")
             {
-                Process.Start(
-                    new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true }
-                );
+                using var process = Process.Start(CreateStartInfo(uri));
+                __result = process != null;
             }
-            __result = true;
         }
-        catch
+        catch (Win32Exception ex)
         {
-            __result = false;
+            MyLog.Default?.WriteLineAndConsole(
+                $"[LinuxCompat] Cannot start the default browser. Check that a desktop URL launcher and browser are installed: {ex}"
+            );
         }
+        catch (Exception ex)
+        {
+            MyLog.Default?.WriteLineAndConsole($"[LinuxCompat] Cannot open browser URL: {ex}");
+        }
+        // Skip the Windows implementation; __result controls the game's browser-failure popup.
         return false;
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(Uri uri)
+    {
+        var startInfo = new ProcessStartInfo("xdg-open") { UseShellExecute = false };
+        startInfo.ArgumentList.Add(uri.ToString());
+        // Steam's runtime can crash external browsers. Change only the child's environment.
+        startInfo.Environment["LD_PRELOAD"] = string.Empty;
+        if (startInfo.Environment.TryGetValue("SYSTEM_LD_LIBRARY_PATH", out var systemLibraryPath))
+            startInfo.Environment["LD_LIBRARY_PATH"] = systemLibraryPath;
+        if (startInfo.Environment.TryGetValue("SYSTEM_PATH", out var systemPath))
+            startInfo.Environment["PATH"] = systemPath;
+        return startInfo;
     }
 }
