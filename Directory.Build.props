@@ -24,8 +24,8 @@
     <!-- Plugin version -->
     <PropertyGroup>
         <Version>10.0.0</Version>
-        <AssemblyVersion>1.0.18.0</AssemblyVersion>
-        <FileVersion>1.0.18.0</FileVersion>
+        <AssemblyVersion>1.0.19.0</AssemblyVersion>
+        <FileVersion>1.0.19.0</FileVersion>
     </PropertyGroup>
 
     <!-- Local developer overrides for the variables above; ignored by Git (*.user).
