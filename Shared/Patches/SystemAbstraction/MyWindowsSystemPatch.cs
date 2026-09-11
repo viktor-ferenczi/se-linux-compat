@@ -4,7 +4,6 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using HarmonyLib;
 using VRage.Utils;
 
@@ -196,17 +195,14 @@ static class MyWindowsSystemOpenUrlPatch
 
     internal static ProcessStartInfo CreateStartInfo(Uri uri)
     {
-        var startInfo = new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true };
-        // Steam's overlay can crash external browsers. Change only the child's environment.
-        if (startInfo.Environment.TryGetValue("LD_PRELOAD", out var preload) && preload != null)
-        {
-            startInfo.Environment["LD_PRELOAD"] = string.Join(
-                ':',
-                preload
-                    .Split(new[] { ':', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Where(path => Path.GetFileName(path) != "gameoverlayrenderer.so")
-            );
-        }
+        var startInfo = new ProcessStartInfo("xdg-open") { UseShellExecute = false };
+        startInfo.ArgumentList.Add(uri.ToString());
+        // Steam's runtime can crash external browsers. Change only the child's environment.
+        startInfo.Environment["LD_PRELOAD"] = string.Empty;
+        if (startInfo.Environment.TryGetValue("SYSTEM_LD_LIBRARY_PATH", out var systemLibraryPath))
+            startInfo.Environment["LD_LIBRARY_PATH"] = systemLibraryPath;
+        if (startInfo.Environment.TryGetValue("SYSTEM_PATH", out var systemPath))
+            startInfo.Environment["PATH"] = systemPath;
         return startInfo;
     }
 }
