@@ -5,6 +5,8 @@ natively on Linux, without Proton or Wine. It covers both the game client
 (loaded by Pulsar) and the dedicated server (loaded by Magnetar), so there is
 nothing to install from this repository.
 
+## Features
+
 - The game runs natively on Linux, on both Wayland and X11.
   Set `SDL_VIDEODRIVER=x11` to force X11.
 - The game's window (in windowed mode) can be resized freely and is compatible
@@ -15,17 +17,17 @@ nothing to install from this repository.
 
 The loader compiles the plugin from source and loads it into the game's process
 before the game starts. The plugin then replaces the Windows-only parts of the
-engine at runtime, without modifying any of the game's own files.
+engine at runtime. It never modifies any of the game's own files.
 
 ## Documentation
 
-- [Installation](Docs/Installation.md) — prerequisites and the system packages
+- [Installation](Docs/Installation.md): prerequisites and the system packages
   your distribution has to provide
-- [Architecture](Docs/Architecture.md) — how the plugin works: startup
-  sequence, native library shims, SDL, and the path translation architecture
-- [Development](Docs/Development.md) — building the plugin, versioning, and the
+- [Architecture](Docs/Architecture.md): how the plugin works, covering the
+  startup sequence, the native library shims, SDL, and path translation
+- [Development](Docs/Development.md): building the plugin, versioning, and the
   diagnostic environment variables
-- [Testing](Docs/Testing.md) — the automated test suites
+- [Testing](Docs/Testing.md): the automated test suites
 
 ## Bug reports
 

@@ -8,17 +8,17 @@ what the plugin is.
 - [Space Engineers](https://store.steampowered.com/app/244850/Space_Engineers/)
   installed by Steam for Linux (the standard installation for Proton)
 - [Pulsar](https://github.com/SpaceGT/Pulsar/), which downloads and applies
-  this plugin for you. For a dedicated server,
-  [Magnetar](https://github.com/CometWorks/magnetar/) takes that role.
+  this plugin for you. On a dedicated server,
+  [Magnetar](https://github.com/CometWorks/magnetar/) does that instead.
 
 There is nothing to install from this repository.
 
 ## System packages
 
 The plugin ships its own DXVK, SDL3, FFmpeg, OpenAL Soft and the PE-loader
-wrappers, but a few libraries have to come from your distribution. The plugin
-checks for them on startup and reports the missing ones by name, together with
-the package names below.
+wrappers, but a few libraries have to come from your distribution. On startup
+the plugin checks for them and names the missing ones, along with the package
+names below.
 
 | Library | Debian/Ubuntu | Fedora | Arch |
 | --- | --- | --- | --- |

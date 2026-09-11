@@ -1,17 +1,22 @@
 # Path translation tests
 
-Verifies that `PathTranslation.Init()` maps the install the game is running from. The install
-root is `MyFileSystem.RootPath`, which the launcher sets to the folder above the executable
-directory before any plugin runs, so the plugin knows nothing about Steam or where the game
-was installed. Standalone: it compiles `Shared/Patches/PathHandling/PathTranslation.cs`
-verbatim against a fabricated `$HOME` and root path, so it needs neither the game nor Steam,
-and touches nothing on disk. `IngressTraceStub.cs` replaces the real `IngressTrace`, which
-reaches into `PathCache`, `PathHelpers` and `MyLog` and cannot compile outside the game;
-`MyFileSystemStub.cs` provides the one `RootPath` field `PathTranslation` reads.
+Verifies that `PathTranslation.Init()` maps the install the game is running
+from. The install root is `MyFileSystem.RootPath`, which the launcher sets to
+the folder above the executable directory before any plugin runs, so the plugin
+knows nothing about Steam or where the game was installed.
 
-Not part of `LinuxCompat.sln` — it targets plain `net10.0` with no game references, and its own
-`Directory.Build.props` shadows the repository root's, so the plugin's build-time game path
-detection does not apply to the test build.
+The suite is standalone. It compiles
+`Shared/Patches/PathHandling/PathTranslation.cs` verbatim against a fabricated
+`$HOME` and root path, so it needs neither the game nor Steam, and it touches
+nothing on disk. `IngressTraceStub.cs` replaces the real `IngressTrace`, which
+reaches into `PathCache`, `PathHelpers` and `MyLog` and cannot compile outside
+the game. `MyFileSystemStub.cs` provides the one `RootPath` field
+`PathTranslation` reads.
+
+It is not part of `LinuxCompat.sln`: it targets plain `net10.0` with no game
+references, and its own `Directory.Build.props` shadows the repository root's,
+so the plugin's build-time game path detection does not apply to the test
+build.
 
 ```bash
 cd tests/path-translation && dotnet run -c Release

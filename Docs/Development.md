@@ -1,6 +1,6 @@
 # Development
 
-Building the plugin from this repository and the knobs that help while
+Building the plugin from this repository, and the knobs that help while
 debugging it. [Architecture.md](Architecture.md) covers how the plugin works.
 
 ## Local build paths
@@ -31,18 +31,18 @@ both build. Format the code with `csharpier` before committing.
 
 The plugin version appears in three places that must stay in step:
 
-- `AssemblyVersion` / `FileVersion` in `Directory.Build.props` — used by the
-  csproj builds, for both projects.
-- `[assembly: AssemblyVersion]` in `ClientPlugin/Plugin.cs` — used when Pulsar
+- `AssemblyVersion` / `FileVersion` in `Directory.Build.props`, used by the
+  csproj builds of both projects.
+- `[assembly: AssemblyVersion]` in `ClientPlugin/Plugin.cs`, used when Pulsar
   compiles the client plugin from source.
-- `[assembly: AssemblyVersion]` in `ServerPlugin/Plugin.cs` — used when
+- `[assembly: AssemblyVersion]` in `ServerPlugin/Plugin.cs`, used when
   Magnetar compiles the server plugin from source.
 
 The attributes are guarded with `#if !LOCAL_BUILD`, which both csproj files
 define and neither loader does, so exactly one of the two sources applies to
 any given build.
 
-`<Commit>TODO</Commit>` in the plugin manifests is a placeholder; PluginHub and
+`<Commit>TODO</Commit>` in the plugin manifests is a placeholder. PluginHub and
 MagnetarHub carry the real commit in their own copy of the manifest.
 
 ## Diagnostic environment variables
@@ -63,22 +63,22 @@ None of these are needed for normal play; they exist for isolating defects.
 ## Scope
 
 Differences that are not Linux-specific belong elsewhere. The game runs on
-.NET 10, and anything that also reproduces on Windows — `Encoding.Default`,
-missing codepages, ICU collation, culture formatting — is owned by the
+.NET 10, and anything that also reproduces on Windows (`Encoding.Default`,
+missing codepages, ICU collation, culture formatting) is owned by the
 `dotnet-compat` plugin, which both loaders apply first. A bug that reproduces
 on Windows is filed against the `dotnet-compat` repository, not this one. The
 mod API suite tags every probe with the owning plugin for exactly this reason;
 see [tests/mod-api/README.md](../tests/mod-api/README.md).
 
 The other rule that decides where a change goes is the path translation
-boundary, in
+boundary, described in
 [Architecture.md](Architecture.md#paths-and-mod-semantics): never patch an
 internal game method just to make it tolerate a mod-shaped path.
 
 ## Documentation
 
 `README.md` is the user-facing overview. Keep it short enough to skim: what the
-plugin is, what it gives you, and links. Everything else goes in this folder —
-`Installation.md`, `Architecture.md`, `Development.md`, `Testing.md` — and each
-document opens with one or two sentences on what it covers. A test suite
+plugin is, what it gives you, and links. Everything else goes in this folder
+(`Installation.md`, `Architecture.md`, `Development.md`, `Testing.md`), and
+each document opens with one or two sentences on what it covers. A test suite
 documents itself in its own `tests/<suite>/README.md`.
