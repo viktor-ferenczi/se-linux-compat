@@ -32,7 +32,8 @@ static class HkHandleFinalizerPatch
         {
             _logged = true;
             VRage.Utils.MyLog.Default.WriteLine(
-                $"[LinuxCompat] HkHandle finalizer patch active, suppress={Suppress}");
+                $"[LinuxCompat] HkHandle finalizer patch active, suppress={Suppress}"
+            );
         }
         return !Suppress;
     }

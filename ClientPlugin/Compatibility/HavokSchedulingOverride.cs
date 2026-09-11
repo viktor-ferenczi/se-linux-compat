@@ -20,7 +20,8 @@ namespace ClientPlugin.Compatibility;
 /// </summary>
 internal static class HavokSchedulingOverride
 {
-    private static readonly bool Sequential = IsSet("SE_HAVOK_SEQUENTIAL") || IsSet("SE_HAVOK_SINGLETHREAD");
+    private static readonly bool Sequential =
+        IsSet("SE_HAVOK_SEQUENTIAL") || IsSet("SE_HAVOK_SINGLETHREAD");
     private static readonly bool SingleThread = IsSet("SE_HAVOK_SINGLETHREAD");
 
     private static bool _logged;
@@ -40,7 +41,8 @@ internal static class HavokSchedulingOverride
         {
             _logged = true;
             VRage.Utils.MyLog.Default.WriteLine(
-                $"[LinuxCompat] Havok scheduling override active: sequential=true singleThread={SingleThread}");
+                $"[LinuxCompat] Havok scheduling override active: sequential=true singleThread={SingleThread}"
+            );
         }
     }
 }

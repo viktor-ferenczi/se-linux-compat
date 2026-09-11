@@ -131,7 +131,9 @@ static class MyProgramInitializeRenderPatch
             // Should not happen, but a null platform input would be an NRE per
             // frame in MyVRageInput.Update. Fall back to the null input driver:
             // no injected input (as before this was fixed), but a running game.
-            Console.WriteLine("[LinuxCompat] WARNING: cannot install the headless platform input; using MyNullInput, injected input will not work");
+            Console.WriteLine(
+                "[LinuxCompat] WARNING: cannot install the headless platform input; using MyNullInput, injected input will not work"
+            );
             MyFakes.USE_NULL_INPUT_DRIVER = true;
             return;
         }
@@ -270,11 +272,22 @@ sealed class HeadlessWindow : IVRageWindow, IVRageInput, IVRageInput2
     void IVRageInput2.GetMouseState(out MyMouseState state) => state = default;
 
     List<string> IVRageInput2.EnumerateJoystickNames() => new List<string>();
+
     string IVRageInput2.InitializeJoystickIfPossible(string joystickInstanceName) => null;
+
     bool IVRageInput2.IsJoystickAxisSupported(MyJoystickAxesEnum axis) => false;
+
     bool IVRageInput2.IsJoystickConnected() => false;
+
     void IVRageInput2.GetJoystickState(ref MyJoystickState state) { }
-    void IVRageInput2.ShowVirtualKeyboardIfNeeded(Action<string> onSuccess, Action onCancel, string defaultText, string title, int maxLength) { }
+
+    void IVRageInput2.ShowVirtualKeyboardIfNeeded(
+        Action<string> onSuccess,
+        Action onCancel,
+        string defaultText,
+        string title,
+        int maxLength
+    ) { }
 
     // MyGuiLocalizedKeyboardState.GetCurrentState calls this into a
     // MyKeyboardBuffer (32 bytes, fixed). Report no keys down; the injected
