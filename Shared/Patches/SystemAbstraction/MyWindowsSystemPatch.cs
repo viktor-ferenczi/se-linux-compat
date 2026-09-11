@@ -1,9 +1,12 @@
 // Prepatch methods whose PerformanceCounter or P/Invoke references prevent Harmony IL parsing.
 
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using HarmonyLib;
+using VRage.Utils;
 
 namespace ClientPlugin.Patches.SystemAbstraction;
 
@@ -167,21 +170,56 @@ static class MyWindowsSystemOpenUrlPatch
 {
     static bool Prefix(string url, ref bool __result)
     {
+        __result = false;
         try
         {
             var uri = new Uri(url);
             if (uri.Scheme == "https")
-            {
-                Process.Start(
-                    new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true }
-                );
-            }
-            __result = true;
+                __result = TryOpen(CreateStartInfo(uri));
         }
-        catch
+        catch (Exception ex)
         {
-            __result = false;
+            MyLog.Default?.WriteLineAndConsole($"[LinuxCompat] Cannot open browser URL: {ex}");
         }
+        return false;
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(Uri uri)
+    {
+        var startInfo = new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true };
+        // Steam's overlay can crash external browsers. Change only the child's environment.
+        if (startInfo.Environment.TryGetValue("LD_PRELOAD", out var preload) && preload != null)
+        {
+            startInfo.Environment["LD_PRELOAD"] = string.Join(
+                ':',
+                preload
+                    .Split(new[] { ':', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(path => Path.GetFileName(path) != "gameoverlayrenderer.so")
+            );
+        }
+        return startInfo;
+    }
+
+    internal static bool TryOpen(ProcessStartInfo startInfo)
+    {
+        try
+        {
+            using var process = Process.Start(startInfo);
+            return process != null;
+        }
+        catch (Win32Exception ex)
+        {
+            MyLog.Default?.WriteLineAndConsole(
+                $"[LinuxCompat] Cannot start the default browser. Check that a desktop URL launcher and browser are installed: {ex}"
+            );
+        }
+        catch (Exception ex)
+        {
+            MyLog.Default?.WriteLineAndConsole(
+                $"[LinuxCompat] Cannot start the browser launcher: {ex}"
+            );
+        }
+        // MyGuiSandbox.OpenExternalBrowser displays the existing failure popup on false.
         return false;
     }
 }
